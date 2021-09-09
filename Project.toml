@@ -1,0 +1,16 @@
+name = "ScalableHrlEs"
+uuid = "58e6f586-a9dd-4c50-bcf6-4cb9c9cc13d3"
+authors = ["sash-a <reallysasha@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
+Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+HrlMuJoCoEnvs = "b8da5b23-2d8f-482c-ba9f-9eec9bcb73c4"
+LyceumBase = "db31fed1-ca1e-4084-8a49-12fae1996a55"
+LyceumMuJoCo = "48b9757e-04b8-4dbf-b6ed-75c13d9e4026"
+LyceumMuJoCoViz = "409fd311-7925-44f6-a514-6be572b34fdd"
+MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
+ScalableES = "c55bb637-f544-4bfc-a806-6182a610b74e"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
