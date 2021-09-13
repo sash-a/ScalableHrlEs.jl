@@ -15,20 +15,18 @@ using StaticArrays
 function runsaved(runname, suffix)
     @load "saved/$(runname)/model-obstat-opt-$suffix.bson" model obstat opt
     
-    @show model typeof(obstat)
-
     mj_activate("/home/sasha/.mujoco/mjkey.txt")
+    
     seed = rand(1:100000)
-    env = HrlMuJoCoEnvs.AntMaze(seed=seed)
+    intervals = 50
 
-    @show getsim(env).mn[:geom_pos]
-
+    env = HrlMuJoCoEnvs.AntGather(viz=true)
 
     # states = collectstates(model, env, obmean, obstd)
     obmean = ScalableHrlEs.mean(obstat)
     obstd = ScalableHrlEs.std(obstat)
-    
-    visualize(env, controller = e -> act(model, e, 200, obmean, obstd, 1000))
+    @show first(ScalableHrlEs.hrl_eval_net(model, env, obmean, obstd, intervals, 1000, 100))
+    visualize(env, controller = e -> act(model, e, intervals, obmean, obstd, 1000))
 end
 
 abs_target = [0, 0]
@@ -45,10 +43,10 @@ function act(nns::Tuple{Chain, Chain}, env, cintervals::Int, (cobmean, pobmean),
 
     ob = LyceumMuJoCo.getobs(env)
     if step % cintervals == 0  # step the controller
-        rel_target = ScalableES.forward(cnn, ob, cobmean, cobstd) * 5                  
+        rel_target = ScalableES.forward(cnn, ob, cobmean, cobstd) * 3
         abs_target = rel_target + pos
         @show abs_target
-        getsim(env).mn[:geom_pos][7:8] = abs_target
+        getsim(env).mn[:geom_pos][ngeom=:recomend_geom] = [abs_target..., 0]
     end
 
     rel_target = abs_target - pos  # update rel_target each time
@@ -64,4 +62,4 @@ function act(nns::Tuple{Chain, Chain}, env, cintervals::Int, (cobmean, pobmean),
     end
 end
 
-runsaved("angleobreplacement-doneontarg", "gen1500")
+runsaved("50int-randctrl-3dist-256ppg", "gen500")

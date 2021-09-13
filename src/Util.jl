@@ -23,3 +23,16 @@ function angle_encode_target(targetvec::Vector{T}, torso_ang::T) where T <: Abst
     angle_to_target = atan(targetvec[2], targetvec[1]) - torso_ang
     [sin(angle_to_target), cos(angle_to_target)]
 end
+
+function outer_clamp(v::T, lower::T, upper::T) where T <: Number
+    if lower < v < upper
+        delta_lower = v - lower
+        delta_upper = upper - v
+
+        v = delta_lower < delta_upper ? lower :  upper
+    end
+
+    v
+end
+
+pol2cart(rho, phi) = [rho * cos(phi), rho * sin(phi)]

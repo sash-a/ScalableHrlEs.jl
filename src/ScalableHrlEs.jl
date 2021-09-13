@@ -1,3 +1,6 @@
+# Author Sasha Abramowitz
+# prefixing variables with 'p' or 'c' refers to the primitive or controller version of that variable
+
 module ScalableHrlEs
 
 using HrlMuJoCoEnvs
@@ -9,6 +12,11 @@ using MPI: MPI, Comm
 using Flux
 import StatsBase
 import Statistics: mean, std
+using Distributions
+using Random
+
+using StaticArrays
+using BSON
 
 include("Util.jl")
 include("Policy.jl")
@@ -16,11 +24,8 @@ include("Optim.jl")
 include("Obstat.jl")
 
 function run_hrles(name::String, cnn, pnn, envs, comm::Comm; 
-                   gens=150, npolicies=256, episodes=3, σ=0.02f0, nt_size=250000000, η=0.01f0)
+                   gens=150, npolicies=256, interval=200, steps=1000, episodes=3, σ=0.02f0, nt_size=250000000, η=0.01f0, pretrained_path="")
     @assert npolicies / size(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(size(comm)))"
-
-    steps = 500
-    intervals = 50
 
     println("Running ScalableEs")
     tblg = ScalableES.TBLogger("tensorboard_logs/$(name)", min_level=ScalableES.Logging.Info)
@@ -36,8 +41,16 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Comm;
     nt, win = NoiseTable(nt_size, length(p.cπ.θ), σ, comm)
 
     obstat = HrlObstat(obssize, obssize, 1f-2)
+    
+    if !isempty(pretrained_path)
+        loaded = BSON.load(pretrained_path, @__MODULE__)
+        model = loaded[:model]
+        obstat = loaded[:obstat]
+        p = HrlPolicy(model...)
+    end
+
     opt = ScalableES.isroot(comm) ? HrlAdam(length(p.cπ.θ), length(p.pπ.θ), η) : nothing
-    f = (nns, e, obmean, obstd) -> hrl_eval_net(nns, e, obmean, obstd, intervals, steps, episodes)
+    f = (nns, e, obmean, obstd) -> hrl_eval_net(nns, e, obmean, obstd, interval, steps, episodes)
 
     println("Initialization done")
     ScalableES.run_gens(gens, name, p, nt, f, envs, npolicies, opt, obstat, tblg, comm)
@@ -100,6 +113,9 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
 
     rewarded_prox = false  # rewarded primitive for being close to target
 
+    cdist = 3
+    sqrthalf = sqrt(1/2)
+
 	for i in 1:episodes
 		LyceumMuJoCo.reset!(env)
         died = false
@@ -107,7 +123,9 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             ob = LyceumMuJoCo.getobs(env)
 
             if i % cintervals == 0  # step the controller
-                rel_target = forward(cnn, ob, cobmean, cobstd) * 5                  
+                c_raw_out = cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, env.sensor_span, env.n_bins, cdist)
+                rel_target = outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
+                # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
                 abs_target = rel_target + pos
                 rewarded_prox = false
                 push!(cobs, ob)
@@ -128,8 +146,9 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             pos = HrlMuJoCoEnvs._torso_xy(env)
             d_new = HrlMuJoCoEnvs.sqeuclidean(pos, abs_target)
 
+            cr += LyceumMuJoCo.getreward(env)  # TODO: ant maze only cares about last reward
             pr += (d_new - d_old) / LyceumMuJoCo.timestep(env)
-            if d_new < 2^2 && !rewarded_prox
+            if d_new < 1^2 && !rewarded_prox
                 pr += 5000
                 rewarded_prox = true
             end
@@ -141,10 +160,23 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
                 break
              end
 		end
-        cr += LyceumMuJoCo.getreward(env)  # only care about the last reward for controller (should check if robot died)
 	end
 	# @show rew step
 	(cr / episodes, pr / episodes), step, (cobs, pobs)
 end
 
-end # module
+function cforward(nn, x, yaw, obmean, obstd, sensor_span, nbins, max_dist; rng=Random.GLOBAL_RNG)
+    out = ScalableES.forward(nn, x, obmean, obstd; rng=rng)
+
+    bin_idx = argmax(out)
+    dist_percent = out[bin_idx]
+
+    bin_res = sensor_span / nbins
+    half_span = sensor_span / 2
+    n_bins_inv = 1 / nbins
+
+    angle = bin_idx * bin_res - half_span + n_bins_inv + yaw
+    return pol2cart(max(dist_percent * max_dist, 1), angle)
+end
+
+end  # module

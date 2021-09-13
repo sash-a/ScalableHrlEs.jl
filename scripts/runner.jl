@@ -20,7 +20,7 @@ function run()
     comm::MPI.Comm = MPI.COMM_WORLD
     node_comm::MPI.Comm = MPI.Comm_split_type(comm, MPI.MPI_COMM_TYPE_SHARED, 0)
 
-    runname = "angleobreplacement-doneontarg"
+    runname = "50int-3dist-256ppg"
     println("Run name: $(runname)")
     if ScalableES.isroot(comm)
         savedfolder = joinpath(@__DIR__, "..", "saved", runname)
@@ -37,8 +37,7 @@ function run()
         
 
         seed = 4321  # auto generate and share this?
-        envs = LyceumBase.tconstruct(HrlMuJoCoEnvs.AntMaze, Threads.nthreads(); seed=seed)
-        # envs = HrlMuJoCoEnvs.tconstruct(HrlMuJoCoEnvs.AntV2, Threads.nthreads())
+        envs = LyceumBase.tconstruct(HrlMuJoCoEnvs.AntGather, Threads.nthreads(); seed=seed)
         env = first(envs)
         actsize::Int = length(actionspace(env))
         obssize::Int = length(obsspace(env))
@@ -54,7 +53,10 @@ function run()
                     Dense(256, actsize, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal))
         println("nns created")
         t = now()
-        ScalableHrlEs.run_hrles(runname, cnn, pnn, envs, comm; gens=1500, episodes=10, npolicies=128)
+
+        pretrained_path = joinpath(@__DIR__, "../saved/50int-randctrl-3dist-256ppg/model-obstat-opt-gen500.bson")
+
+        ScalableHrlEs.run_hrles(runname, cnn, pnn, envs, comm; gens=500, interval=50, episodes=10, npolicies=256, pretrained_path=pretrained_path)
         println("Total time: $(now() - t)")
     end
 
