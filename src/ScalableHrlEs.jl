@@ -14,6 +14,7 @@ import StatsBase
 import Statistics: mean, std
 using Distributions
 using Random
+using SharedArrays
 
 using StaticArrays
 using BSON
@@ -23,7 +24,7 @@ include("Policy.jl")
 include("Optim.jl")
 include("Obstat.jl")
 
-function run_hrles(name::String, cnn, pnn, envs, comm::Comm; 
+function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.ThreadComm}; 
                    gens=150, npolicies=256, interval=200, steps=1000, episodes=3, σ=0.02f0, nt_size=250000000, η=0.01f0, pretrained_path="")
     @assert npolicies / size(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(size(comm)))"
 
@@ -34,7 +35,7 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Comm;
     obssize = length(ScalableES.obsspace(env))
 
     println("Creating policy")
-    p = HrlPolicy(cnn, pnn)
+    p = HrlPolicy(cnn, pnn, comm)
     ScalableES.bcast_policy!(p, comm)
 
     println("Creating noise table")
@@ -46,7 +47,7 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Comm;
         loaded = BSON.load(pretrained_path, @__MODULE__)
         model = loaded[:model]
         obstat = loaded[:obstat]
-        p = HrlPolicy(model...)
+        p = HrlPolicy{Float32}(model...)
     end
 
     opt = ScalableES.isroot(comm) ? HrlAdam(length(p.cπ.θ), length(p.pπ.θ), η) : nothing
@@ -74,11 +75,12 @@ function ScalableES.noiseify(π::HrlPolicy, nt::ScalableES.NoiseTable)
     HrlPolicy(cpos_pol, ppos_pol), HrlPolicy(cneg_pol, pneg_pol), ind
 end
 
-function ScalableES.optimize!(π::HrlPolicy, ranked::Vector{HrlEsResult{T}}, nt::NoiseTable, optim::HrlAdam, l2coeff::Float32) where T
+function ScalableES.optimize!(π::HrlPolicy, ranked::Vector{HrlEsResult{T}}, nt::NoiseTable, optim::HrlAdam, l2coeff::Float32) where T <: AbstractFloat
     ScalableES.optimize!(π.cπ, map(r->r.cres, ranked), nt, optim.copt, l2coeff), ScalableES.optimize!(π.pπ, map(r->r.pres, ranked), nt, optim.popt, l2coeff)
 end
 
-ScalableES.make_result_vec(n::Int, ::HrlPolicy) = Vector{HrlEsResult{Float64}}(undef, n)
+ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)
+ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::ScalableES.ThreadComm) = SharedVector{HrlEsResult{Float64}}(n)
 # don't like the hardcoded +2 but not sure how to get round this
 ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape, 0f0)
 
@@ -88,6 +90,7 @@ function ScalableES.bcast_policy!(π::HrlPolicy, comm::Comm)
     π.cπ = ScalableES.bcast(π.cπ, comm)
 	π.pπ = ScalableES.bcast(π.pπ, comm)
 end
+function ScalableES.bcast_policy!(π::HrlPolicy, comm::ScalableES.ThreadComm) end
 
 function encode_prim_obs(obs::Vector{T}, env, targ_vec, targ_dist) where T<:AbstractFloat
     cp = copy(obs)
@@ -147,7 +150,7 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             d_new = HrlMuJoCoEnvs.sqeuclidean(pos, abs_target)
 
             cr += LyceumMuJoCo.getreward(env)  # TODO: ant maze only cares about last reward
-            pr += (d_new - d_old) / LyceumMuJoCo.timestep(env)
+            pr += (d_old - d_new) / LyceumMuJoCo.timestep(env)
             if d_new < 1^2 && !rewarded_prox
                 pr += 5000
                 rewarded_prox = true

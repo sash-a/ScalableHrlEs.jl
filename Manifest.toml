@@ -1025,7 +1025,7 @@ uuid = "476501e8-09a2-5ece-8869-fb82de89a1fa"
 version = "0.6.6"
 
 [[ScalableES]]
-deps = ["BSON", "Dates", "Distances", "Distributions", "Flux", "HrlMuJoCoEnvs", "IterTools", "LinearAlgebra", "Logging", "LyceumAI", "LyceumBase", "LyceumMuJoCo", "LyceumMuJoCoViz", "MPI", "MuJoCo", "Plots", "Random", "StaticArrays", "Statistics", "StatsBase", "TensorBoardLogger", "UniversalLogger"]
+deps = ["BSON", "Dates", "Distances", "Distributions", "Flux", "HrlMuJoCoEnvs", "IterTools", "LinearAlgebra", "Logging", "LyceumAI", "LyceumBase", "LyceumMuJoCo", "LyceumMuJoCoViz", "MPI", "MuJoCo", "Plots", "Random", "SharedArrays", "StaticArrays", "Statistics", "StatsBase", "TensorBoardLogger", "UniversalLogger"]
 path = "../ScalableES"
 uuid = "c55bb637-f544-4bfc-a806-6182a610b74e"
 version = "0.1.0"
