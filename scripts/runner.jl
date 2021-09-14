@@ -3,21 +3,19 @@ using .ScalableHrlEs: ScalableHrlEs, ScalableES
 
 using MuJoCo
 using LyceumMuJoCo
-using LyceumBase
+using HrlMuJoCoEnvs
 
-using MPI
 using Base.Threads
-
 using Flux
 using Dates
 using Random
 
-using HrlMuJoCoEnvs
 
 function run()
-    runname = "fixed-prim-rew"
-    println("Run name: $(runname)")
-    savedfolder = joinpath(@__DIR__, "..", "saved", runname)
+    conf = ScalableHrlEs.loadconfig("config/cfg.yml")
+
+    println("Run name: $(conf.name)")
+    savedfolder = joinpath(@__DIR__, "..", "saved", conf.name)
     if !isdir(savedfolder)
         mkdir(savedfolder)
     end
@@ -29,7 +27,7 @@ function run()
     
 
     seed = 4321  # auto generate and share this?
-    envs = LyceumBase.tconstruct(HrlMuJoCoEnvs.AntGather, Threads.nthreads(); seed=seed)
+    envs = HrlMuJoCoEnvs.tconstruct(HrlMuJoCoEnvs.AntGather, Threads.nthreads(); seed=seed)
     env = first(envs)
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
@@ -46,12 +44,15 @@ function run()
     println("nns created")
     t = now()
 
-    pretrained_path = "" # joinpath(@__DIR__, "../saved/50int-randctrl-3dist-256ppg/model-obstat-opt-gen500.bson")
-
-    ScalableHrlEs.run_hrles(runname, cnn, pnn, envs, ScalableES.ThreadComm(); gens=500, interval=50, episodes=10, npolicies=256, pretrained_path=pretrained_path)
+    ScalableHrlEs.run_hrles(conf.name, cnn, pnn, envs, ScalableES.ThreadComm(); 
+                            gens=conf.training.generations, 
+                            interval=conf.hrl.interval, 
+                            episodes=conf.training.episodes,
+                            npolicies=conf.training.policies,
+                            cdist=conf.hrl.cdist,
+                            pretrained_path=conf.hrl.pretrained)
+                        
     println("Total time: $(now() - t)")
-
-    MPI.Finalize()
     println("Finalized!")
 end
 

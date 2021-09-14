@@ -1,7 +1,6 @@
+module ScalableHrlEs
 # Author Sasha Abramowitz
 # prefixing variables with 'p' or 'c' refers to the primitive or controller version of that variable
-
-module ScalableHrlEs
 
 using HrlMuJoCoEnvs
 
@@ -18,14 +17,17 @@ using SharedArrays
 
 using StaticArrays
 using BSON
+using YAML
+using Configurations
 
 include("Util.jl")
+include("Config.jl")
 include("Policy.jl")
 include("Optim.jl")
 include("Obstat.jl")
 
 function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.ThreadComm}; 
-                   gens=150, npolicies=256, interval=200, steps=1000, episodes=3, σ=0.02f0, nt_size=250000000, η=0.01f0, pretrained_path="")
+                   gens=150, npolicies=256, interval=200, steps=1000, episodes=3, cdist=4, σ=0.02f0, nt_size=250000000, η=0.01f0, pretrained_path="")
     @assert npolicies / size(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(size(comm)))"
 
     println("Running ScalableEs")
@@ -51,7 +53,7 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     end
 
     opt = ScalableES.isroot(comm) ? HrlAdam(length(p.cπ.θ), length(p.pπ.θ), η) : nothing
-    f = (nns, e, obmean, obstd) -> hrl_eval_net(nns, e, obmean, obstd, interval, steps, episodes)
+    f = (nns, e, obmean, obstd) -> hrl_eval_net(nns, e, obmean, obstd, interval, steps, episodes, cdist)
 
     println("Initialization done")
     ScalableES.run_gens(gens, name, p, nt, f, envs, npolicies, opt, obstat, tblg, comm)
@@ -59,7 +61,9 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     model = ScalableES.to_nn(p)
     ScalableES.@save joinpath(@__DIR__, "..", "saved", name, "model-obstat-opt-final.bson") model obstat opt
 
-    MPI.free(win)
+    if win !== nothing
+        MPI.free(win)
+    end
 end
 
 function ScalableES.noiseify(π::Policy, nt::NoiseTable, ind::Int)
@@ -99,7 +103,7 @@ function encode_prim_obs(obs::Vector{T}, env, targ_vec, targ_dist) where T<:Abst
     cp
 end
 
-function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), cintervals::Int, steps::Int, episodes::Int)
+function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), cintervals::Int, steps::Int, episodes::Int, cdist::Float32)
     cnn, pnn = nns
     
     cobs = Vector{Vector{Float64}}()
@@ -116,7 +120,6 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
 
     rewarded_prox = false  # rewarded primitive for being close to target
 
-    cdist = 3
     sqrthalf = sqrt(1/2)
 
 	for i in 1:episodes
