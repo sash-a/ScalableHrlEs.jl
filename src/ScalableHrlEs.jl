@@ -113,28 +113,34 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
     pr = 0
 	step = 0
 
-    rel_target = zeros(2)
-    abs_target = zeros(2)
-    pos = zeros(2)
-    d_old = 0f0
+    
 
     rewarded_prox = false  # rewarded primitive for being close to target
-
     sqrthalf = sqrt(1/2)
 
-	for i in 1:episodes
+	for ep in 1:episodes
 		LyceumMuJoCo.reset!(env)
         died = false
-		for i in 1:steps
+        
+        pos = zeros(2)
+        rel_target = zeros(2)
+        abs_target = zeros(2)
+        
+        targ_start_dist = 0  # dist from target when controller suggests position
+        d_old = 0f0
+
+		for i in 0:steps - 1
             ob = LyceumMuJoCo.getobs(env)
 
             if i % cintervals == 0  # step the controller
-                c_raw_out = cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, env.sensor_span, env.n_bins, cdist)
+                c_raw_out = cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, env.sensor_span, env.nbins, cdist)
                 rel_target = outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
                 # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
                 abs_target = rel_target + pos
                 rewarded_prox = false
                 push!(cobs, ob)
+
+                targ_start_dist = d_old = HrlMuJoCoEnvs.euclidean(abs_target, pos)
             end
 
             rel_target = abs_target - pos  # update rel_target each time
@@ -150,14 +156,19 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
 			
             # calculating rewards
             pos = HrlMuJoCoEnvs._torso_xy(env)
-            d_new = HrlMuJoCoEnvs.sqeuclidean(pos, abs_target)
+            d_new = HrlMuJoCoEnvs.euclidean(pos, abs_target)
 
             cr += LyceumMuJoCo.getreward(env)  # TODO: ant maze only cares about last reward
-            pr += (d_old - d_new) / LyceumMuJoCo.timestep(env)
-            if d_new < 1^2 && !rewarded_prox
-                pr += 5000
-                rewarded_prox = true
+            # pr += (d_old - d_new) / LyceumMuJoCo.timestep(env)
+            # if d_new < 1^2 && !rewarded_prox
+            #     pr += 5000
+            #     rewarded_prox = true
+            # end
+            if targ_start_dist == 0
+                @show targ_start_dist
             end
+            pr += 1 - d_new / targ_start_dist
+            pr += d_new < 1 ? 1 : 0
             
             d_old = d_new
             

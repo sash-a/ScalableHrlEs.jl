@@ -18,14 +18,16 @@ function runsaved(runname, suffix)
     mj_activate("/home/sasha/.mujoco/mjkey.txt")
     
     seed = rand(1:100000)
-    intervals = 50
+
+    intervals = 200
+    cdist = 5f0
 
     env = HrlMuJoCoEnvs.AntGather(viz=true)
 
     # states = collectstates(model, env, obmean, obstd)
     obmean = ScalableHrlEs.mean(obstat)
     obstd = ScalableHrlEs.std(obstat)
-    @show first(ScalableHrlEs.hrl_eval_net(model, env, obmean, obstd, intervals, 1000, 100))
+    @show first(ScalableHrlEs.hrl_eval_net(model, env, obmean, obstd, intervals, 1000, 100, cdist))
     visualize(env, controller = e -> act(model, e, intervals, obmean, obstd, 1000))
 end
 
@@ -62,4 +64,4 @@ function act(nns::Tuple{Chain, Chain}, env, cintervals::Int, (cobmean, pobmean),
     end
 end
 
-runsaved("50int-randctrl-3dist-256ppg", "gen500")
+runsaved("200int-1ksteps", "gen212")

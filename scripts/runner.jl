@@ -27,7 +27,9 @@ function run()
     
 
     seed = 4321  # auto generate and share this?
-    envs = HrlMuJoCoEnvs.tconstruct(HrlMuJoCoEnvs.AntGather, Threads.nthreads(); seed=seed)
+    # envs = HrlMuJoCoEnvs.tconstruct(HrlMuJoCoEnvs.AntGather, Threads.nthreads(); seed=seed)
+    envs = HrlMuJoCoEnvs.tconstruct(HrlMuJoCoEnvs.PointGatherEnv, Threads.nthreads(); seed=seed)
+
     env = first(envs)
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
