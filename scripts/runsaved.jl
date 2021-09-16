@@ -11,18 +11,13 @@ using Flux
 
 using BSON: @load
 using StaticArrays
+using ArgParse
 
-function runsaved(runname, suffix)
-    @load "saved/$(runname)/model-obstat-opt-$suffix.bson" model obstat opt
-    
+function runsaved(runname, gen, intervals::Int, cdist::Float32)
+    @load "saved/$(runname)/model-obstat-opt-gen$gen.bson" model obstat opt
     mj_activate("/home/sasha/.mujoco/mjkey.txt")
-    
-    seed = rand(1:100000)
 
-    intervals = 200
-    cdist = 5f0
-
-    env = HrlMuJoCoEnvs.AntGather(viz=true)
+    env = HrlMuJoCoEnvs.PointGatherEnv(viz=true)
 
     # states = collectstates(model, env, obmean, obstd)
     obmean = ScalableHrlEs.mean(obstat)
@@ -64,4 +59,23 @@ function act(nns::Tuple{Chain, Chain}, env, cintervals::Int, (cobmean, pobmean),
     end
 end
 
-runsaved("200int-1ksteps", "gen212")
+s = ArgParseSettings()
+@add_arg_table s begin
+    "runname"
+        required=true
+        help="run name in saved folder"
+    "generation"
+        required=true
+        help="generation number to view"
+    "--intervals", "-i"
+        help="how often the controller suggests a target"
+        arg_type = Int
+        default=200
+    "--dist", "-d"
+        help="max distance from agent controller can recommend"
+        arg_type = Float32
+        default=4f0
+end
+args = parse_args(s)
+
+runsaved(args["runname"], args["generation"], args["intervals"], args["dist"])

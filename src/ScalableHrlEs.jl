@@ -113,8 +113,6 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
     pr = 0
 	step = 0
 
-    
-
     rewarded_prox = false  # rewarded primitive for being close to target
     sqrthalf = sqrt(1/2)
 
@@ -164,9 +162,6 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             #     pr += 5000
             #     rewarded_prox = true
             # end
-            if targ_start_dist == 0
-                @show targ_start_dist
-            end
             pr += 1 - d_new / targ_start_dist
             pr += d_new < 1 ? 1 : 0
             

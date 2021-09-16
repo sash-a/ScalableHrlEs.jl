@@ -9,10 +9,11 @@ using Base.Threads
 using Flux
 using Dates
 using Random
+using ArgParse
 
 
-function run()
-    conf = ScalableHrlEs.loadconfig("config/cfg.yml")
+function run(cfgpath, mjpath)
+    conf = ScalableHrlEs.loadconfig(cfgpath)
 
     println("Run name: $(conf.name)")
     savedfolder = joinpath(@__DIR__, "..", "saved", conf.name)
@@ -20,7 +21,7 @@ function run()
         mkdir(savedfolder)
     end
 
-    mj_activate("/home/sasha/.mujoco/mjkey.txt")
+    mj_activate(mjpath)
     println("MuJoCo activated")
 
     println("n threads $(Threads.nthreads())")
@@ -58,4 +59,15 @@ function run()
     println("Finalized!")
 end
 
-run()
+s = ArgParseSettings()
+@add_arg_table s begin
+    "cfgpath"
+        required=true
+        help="path/to/cfg.yml"
+    "mjpath"
+        required=true
+        help="path/to/mujoco/mjkey.txt"
+end
+args = parse_args(s)
+
+run(args["cfgpath"], args["mjpath"])
