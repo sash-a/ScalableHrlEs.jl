@@ -34,13 +34,14 @@ function run(cfgpath, mjpath)
     env = first(envs)
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
+    coutsize = 10
 
     cnn = Chain(Dense(obssize, 256, tanh; initW=Flux.glorot_normal, initb=Flux.glorot_normal),
                 Dense(256, 256, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal),
                 Dense(256, 256, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal),
-                Dense(256, 2, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal))
+                Dense(256, coutsize, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal))
 
-    pnn = Chain(Dense(obssize, 256, tanh; initW=Flux.glorot_normal, initb=Flux.glorot_normal),
+    pnn = Chain(Dense(obssize + 3, 256, tanh; initW=Flux.glorot_normal, initb=Flux.glorot_normal),
                 Dense(256, 256, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal),
                 Dense(256, 256, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal),
                 Dense(256, actsize, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal))
@@ -64,8 +65,9 @@ s = ArgParseSettings()
     "cfgpath"
         required=true
         help="path/to/cfg.yml"
-    "mjpath"
-        required=true
+    "--mjpath"
+        required=false
+        default="~/.mujoco/mjkey.txt"
         help="path/to/mujoco/mjkey.txt"
 end
 args = parse_args(s)

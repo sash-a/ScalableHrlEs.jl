@@ -43,7 +43,7 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     println("Creating noise table")
     nt, win = NoiseTable(nt_size, length(p.cπ.θ), σ, comm)
 
-    obstat = HrlObstat(obssize, obssize, 1f-2)
+    obstat = HrlObstat(obssize, obssize + 3, 1f-2)
     
     if !isempty(pretrained_path)
         loaded = BSON.load(pretrained_path, @__MODULE__)
@@ -86,7 +86,7 @@ end
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::ScalableES.ThreadComm) = SharedVector{HrlEsResult{Float64}}(n)
 # don't like the hardcoded +2 but not sure how to get round this
-ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape, 0f0)
+ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape + 3, 0f0)
 
 
 function ScalableES.bcast_policy!(π::HrlPolicy, comm::Comm)
@@ -94,13 +94,14 @@ function ScalableES.bcast_policy!(π::HrlPolicy, comm::Comm)
     π.cπ = ScalableES.bcast(π.cπ, comm)
 	π.pπ = ScalableES.bcast(π.pπ, comm)
 end
-function ScalableES.bcast_policy!(π::HrlPolicy, comm::ScalableES.ThreadComm) end
+function ScalableES.bcast_policy!(::HrlPolicy, ::ScalableES.ThreadComm) end
 
 function encode_prim_obs(obs::Vector{T}, env, targ_vec, targ_dist) where T<:AbstractFloat
-    cp = copy(obs)
-    cp[1:2] = angle_encode_target(targ_vec, LyceumMuJoCo._torso_ang(env))
-    cp[3] = targ_dist / 1000
-    cp
+    vcat(angle_encode_target(targ_vec, LyceumMuJoCo._torso_ang(env)), [targ_dist], obs)
+    # cp = copy(obs)
+    # cp[1:2] = angle_encode_target(targ_vec, LyceumMuJoCo._torso_ang(env))
+    # cp[3] = 
+    # cp
 end
 
 function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), cintervals::Int, steps::Int, episodes::Int, cdist::Float32)
@@ -131,6 +132,7 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             ob = LyceumMuJoCo.getobs(env)
 
             if i % cintervals == 0  # step the controller
+                # c_raw_out = forward(cnn, ob, cobmean, cobstd) * cdist
                 c_raw_out = cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, env.sensor_span, env.nbins, cdist)
                 rel_target = outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
                 # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
@@ -143,8 +145,7 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
 
             rel_target = abs_target - pos  # update rel_target each time
             # pob = vcat(rel_target, ob)
-            pob = encode_prim_obs(ob, env, rel_target, d_old)
-
+            pob = encode_prim_obs(ob, env, rel_target, d_old / targ_start_dist)
 			act = forward(pnn, pob, pobmean, pobstd)
 			LyceumMuJoCo.setaction!(env, act)
 			LyceumMuJoCo.step!(env)
