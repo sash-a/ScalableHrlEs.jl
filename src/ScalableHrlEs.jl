@@ -145,7 +145,7 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
 
             rel_target = abs_target - pos  # update rel_target each time
             # pob = vcat(rel_target, ob)
-            pob = encode_prim_obs(ob, env, rel_target, d_old / targ_start_dist)
+            pob = encode_prim_obs(ob, env, rel_target, d_old / 1000)
 			act = forward(pnn, pob, pobmean, pobstd)
 			LyceumMuJoCo.setaction!(env, act)
 			LyceumMuJoCo.step!(env)
@@ -163,7 +163,7 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             #     pr += 5000
             #     rewarded_prox = true
             # end
-            pr += 1 - d_new / targ_start_dist
+            pr += 1 - (d_new / targ_start_dist)
             pr += d_new < 1 ? 1 : 0
             
             d_old = d_new
