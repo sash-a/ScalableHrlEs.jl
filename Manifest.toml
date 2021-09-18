@@ -310,6 +310,9 @@ git-tree-sha1 = "0f5e8d0cb91a6386ba47bd1527b240bd5725fbae"
 uuid = "48062228-2e41-5def-b9a4-89aafe57970f"
 version = "0.9.10"
 
+[[FileWatching]]
+uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
+
 [[FillArrays]]
 deps = ["LinearAlgebra", "Random", "SparseArrays"]
 git-tree-sha1 = "502b3de6039d5b78c76118423858d981349f3823"
@@ -912,6 +915,12 @@ deps = ["Dates"]
 git-tree-sha1 = "438d35d2d95ae2c5e8780b330592b6de8494e779"
 uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 version = "2.0.3"
+
+[[Pidfile]]
+deps = ["FileWatching", "Test"]
+git-tree-sha1 = "1be8660b2064893cd2dae4bd004b589278e4440d"
+uuid = "fa939f87-e72e-5be4-a000-7fc836dbe307"
+version = "1.2.0"
 
 [[Pixman_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]

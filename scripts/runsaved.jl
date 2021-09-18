@@ -17,7 +17,7 @@ function runsaved(runname, gen, intervals::Int, cdist::Float32)
     @load "saved/$(runname)/model-obstat-opt-gen$gen.bson" model obstat opt
     mj_activate("/home/sasha/.mujoco/mjkey.txt")
 
-    env = HrlMuJoCoEnvs.PointGatherEnv(viz=true)
+    env = HrlMuJoCoEnvs.AntGatherEnv(viz=true)
 
     # states = collectstates(model, env, obmean, obstd)
     obmean = ScalableHrlEs.mean(obstat)

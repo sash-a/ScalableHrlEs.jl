@@ -1,11 +1,11 @@
-name: antgather-onehotfix2-360viz-i100-d4-bigcmpt
+name: easyant-i50
 env:
-  steps: 1000  # max steps for env
+  steps: 500  # max steps for env
 training:
-  episodes: 10  # episodes per policy
+  episodes: 5  # episodes per policy
   policies: 256  # policies in one generation
-  generations: 500
+  generations: 1000
 hrl:
   pretrained: ""
-  interval: 100
+  interval: 50
   cdist: 4
