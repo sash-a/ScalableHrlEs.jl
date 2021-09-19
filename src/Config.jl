@@ -1,6 +1,7 @@
 using Configurations
 
 @option struct Env
+    name::String
     steps::Int
 end
 

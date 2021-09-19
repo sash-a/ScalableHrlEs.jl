@@ -20,13 +20,10 @@ function run(conf, mjpath)
 
     mj_activate(mjpath)
     println("MuJoCo activated")
-
     println("n threads $(Threads.nthreads())")
-    
 
     seed = 4321  # auto generate and share this?
-    # envs = HrlMuJoCoEnvs.tconstruct(HrlMuJoCoEnvs.AntGather, Threads.nthreads(); seed=seed)
-    envs = HrlMuJoCoEnvs.tconstruct(HrlMuJoCoEnvs.AntGatherEnv, Threads.nthreads(); seed=seed)
+    envs = HrlMuJoCoEnvs.tconstruct(nametoenv(conf.env.name), Threads.nthreads(); seed=seed)
 
     env = first(envs)
     actsize::Int = length(actionspace(env))
@@ -70,4 +67,15 @@ function parseargs()
             help="path/to/mujoco/mjkey.txt"
     end
     parse_args(s)
+end
+
+function nametoenv(name::String)
+    if occursin("AntMaze", name)
+        HrlMuJoCoEnvs.AntMaze
+    elseif occursin("AntGather", name)
+        HrlMuJoCoEnvs.AntGatherEnv
+    else
+        print("Unrecognized environment name")
+        nothing
+    end
 end

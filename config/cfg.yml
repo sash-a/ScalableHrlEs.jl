@@ -1,10 +1,11 @@
-name: easyant-i50
+name: antmaze-i50
 env:
+  name: AntMaze
   steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy
   policies: 256  # policies in one generation
-  generations: 1000
+  generations: 700
 hrl:
   pretrained: ""
   interval: 50

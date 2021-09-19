@@ -117,6 +117,9 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
     rewarded_prox = false  # rewarded primitive for being close to target
     sqrthalf = sqrt(1/2)
 
+    sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
+    nbins = hasproperty(env, :nbins) ? env.nbins : 8
+
 	for ep in 1:episodes
 		LyceumMuJoCo.reset!(env)
         died = false
@@ -133,7 +136,7 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
 
             if i % cintervals == 0  # step the controller
                 # c_raw_out = forward(cnn, ob, cobmean, cobstd) * cdist
-                c_raw_out = cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, env.sensor_span, env.nbins, cdist)
+                c_raw_out = cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, sensor_span, nbins, cdist)
                 rel_target = outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
                 # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
                 abs_target = rel_target + pos
@@ -160,7 +163,6 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             cr += LyceumMuJoCo.getreward(env)  # TODO: ant maze only cares about last reward
             # pr += (d_old - d_new) / LyceumMuJoCo.timestep(env)
             # if d_new < 1^2 && !rewarded_prox
-            #     pr += 5000
             #     rewarded_prox = true
             # end
             pr += 1 - (d_new / targ_start_dist)
