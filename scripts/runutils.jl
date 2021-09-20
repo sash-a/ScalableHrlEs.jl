@@ -28,7 +28,7 @@ function run(conf, mjpath)
     env = first(envs)
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
-    coutsize = 10
+    coutsize = 2  # 10
 
     cnn = Chain(Dense(obssize, 256, tanh; initW=Flux.glorot_normal, initb=Flux.glorot_normal),
                 Dense(256, 256, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal),
@@ -74,6 +74,10 @@ function nametoenv(name::String)
         HrlMuJoCoEnvs.AntMaze
     elseif occursin("AntGather", name)
         HrlMuJoCoEnvs.AntGatherEnv
+    elseif occursin("PointMaze", name)
+        HrlMuJoCoEnvs.PointMazeEnv
+    elseif occursin("PointGather", name)
+        HrlMuJoCoEnvs.PointGatherEnv
     else
         print("Unrecognized environment name")
         nothing

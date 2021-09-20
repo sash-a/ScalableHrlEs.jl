@@ -1,7 +1,7 @@
-name: antmaze-i50
+name: pointmaze-normvectarg-vecctrl-rewarttarg-test
 env:
-  name: AntMaze
-  steps: 500  # max steps for env
+  name: PointMaze
+  steps: 1000  # max steps for env
 training:
   episodes: 5  # episodes per policy
   policies: 256  # policies in one generation

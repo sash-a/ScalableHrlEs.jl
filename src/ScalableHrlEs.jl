@@ -135,8 +135,8 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             ob = LyceumMuJoCo.getobs(env)
 
             if i % cintervals == 0  # step the controller
-                # c_raw_out = forward(cnn, ob, cobmean, cobstd) * cdist
-                c_raw_out = cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, sensor_span, nbins, cdist)
+                c_raw_out = forward(cnn, ob, cobmean, cobstd) * cdist
+                # c_raw_out = cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, sensor_span, nbins, cdist)
                 rel_target = outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
                 # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
                 abs_target = rel_target + pos
@@ -160,7 +160,7 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             pos = HrlMuJoCoEnvs._torso_xy(env)
             d_new = HrlMuJoCoEnvs.euclidean(pos, abs_target)
 
-            cr += LyceumMuJoCo.getreward(env)  # TODO: ant maze only cares about last reward
+            cr += LyceumMuJoCo.getreward(env)
             # pr += (d_old - d_new) / LyceumMuJoCo.timestep(env)
             # if d_new < 1^2 && !rewarded_prox
             #     rewarded_prox = true
