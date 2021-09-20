@@ -28,7 +28,7 @@ function run(conf, mjpath)
     env = first(envs)
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
-    coutsize = 2  # 10
+    coutsize = conf.hrl.onehot ? 8 : 2
 
     cnn = Chain(Dense(obssize, 256, tanh; initW=Flux.glorot_normal, initb=Flux.glorot_normal),
                 Dense(256, 256, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal),
@@ -49,7 +49,8 @@ function run(conf, mjpath)
                             episodes=conf.training.episodes,
                             npolicies=conf.training.policies,
                             cdist=conf.hrl.cdist,
-                            pretrained_path=conf.hrl.pretrained)
+                            pretrained_path=conf.hrl.pretrained,
+                            onehot=conf.hrl.onehot)
                         
     println("Total time: $(now() - t)")
     println("Finalized!")

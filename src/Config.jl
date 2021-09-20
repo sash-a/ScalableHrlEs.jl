@@ -15,6 +15,7 @@ end
     pretrained::String
     interval::Int
     cdist::Float32
+    onehot::Bool
 end
 
 @option struct SHrlEsConfig

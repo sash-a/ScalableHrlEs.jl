@@ -5,7 +5,7 @@ module ScalableHrlEs
 using HrlMuJoCoEnvs
 
 import ScalableES
-using ScalableES: NoiseTable, forward, LyceumMuJoCo, Policy
+using ScalableES: NoiseTable, LyceumMuJoCo, Policy
 
 using MPI: MPI, Comm
 using Flux
@@ -27,7 +27,8 @@ include("Optim.jl")
 include("Obstat.jl")
 
 function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.ThreadComm}; 
-                   gens=150, npolicies=256, interval=200, steps=1000, episodes=3, cdist=4, σ=0.02f0, nt_size=250000000, η=0.01f0, pretrained_path="")
+                   gens=150, npolicies=256, interval=200, steps=1000, episodes=3, cdist=4, σ=0.02f0, nt_size=250000000, η=0.01f0, 
+                   pretrained_path="", onehot=false)
     @assert npolicies / size(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(size(comm)))"
 
     println("Running ScalableEs")
@@ -53,7 +54,10 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     end
 
     opt = ScalableES.isroot(comm) ? HrlAdam(length(p.cπ.θ), length(p.pπ.θ), η) : nothing
-    f = (nns, e, obmean, obstd) -> hrl_eval_net(nns, e, obmean, obstd, interval, steps, episodes, cdist)
+
+    cforward = onehot ? onehot_forward : forward
+    f = (nns, e, obmean, obstd) -> hrl_eval_net(nns, e, obmean, obstd, interval, steps, 
+                                                episodes, cdist; cforward=cforward)
 
     println("Initialization done")
     ScalableES.run_gens(gens, name, p, nt, f, envs, npolicies, opt, obstat, tblg, comm)
@@ -85,7 +89,7 @@ end
 
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::ScalableES.ThreadComm) = SharedVector{HrlEsResult{Float64}}(n)
-# don't like the hardcoded +2 but not sure how to get round this
+# don't like the hardcoded +3 but not sure how to get round this
 ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape + 3, 0f0)
 
 
@@ -96,15 +100,12 @@ function ScalableES.bcast_policy!(π::HrlPolicy, comm::Comm)
 end
 function ScalableES.bcast_policy!(::HrlPolicy, ::ScalableES.ThreadComm) end
 
-function encode_prim_obs(obs::Vector{T}, env, targ_vec, targ_dist) where T<:AbstractFloat
+function encode_prim_obs(obs::Vector{T}, env, targ_vec, targ_dist) where T <: AbstractFloat
     vcat(angle_encode_target(targ_vec, LyceumMuJoCo._torso_ang(env)), [targ_dist], obs)
-    # cp = copy(obs)
-    # cp[1:2] = angle_encode_target(targ_vec, LyceumMuJoCo._torso_ang(env))
-    # cp[3] = 
-    # cp
 end
 
-function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), cintervals::Int, steps::Int, episodes::Int, cdist::Float32)
+function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), 
+                    cintervals::Int, steps::Int, episodes::Int, cdist::Float32; cforward=onehot_forward)
     cnn, pnn = nns
     
     cobs = Vector{Vector{Float64}}()
@@ -135,8 +136,7 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             ob = LyceumMuJoCo.getobs(env)
 
             if i % cintervals == 0  # step the controller
-                c_raw_out = forward(cnn, ob, cobmean, cobstd) * cdist
-                # c_raw_out = cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, sensor_span, nbins, cdist)
+                c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins)
                 rel_target = outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
                 # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
                 abs_target = rel_target + pos
@@ -149,7 +149,7 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             rel_target = abs_target - pos  # update rel_target each time
             # pob = vcat(rel_target, ob)
             pob = encode_prim_obs(ob, env, rel_target, d_old / 1000)
-			act = forward(pnn, pob, pobmean, pobstd)
+			act = ScalableES.forward(pnn, pob, pobmean, pobstd)
 			LyceumMuJoCo.setaction!(env, act)
 			LyceumMuJoCo.step!(env)
 
@@ -180,7 +180,9 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
 	(cr / episodes, pr / episodes), step, (cobs, pobs)
 end
 
-function cforward(nn, x, yaw, obmean, obstd, sensor_span, nbins, max_dist; rng=Random.GLOBAL_RNG)
+# so that it matches the signature of ctrlforward
+forward(nn, x, obmean, obstd, cdist, _, _, _) = ScalableES.forward(nn, x, obmean, obstd) * cdist
+function onehot_forward(nn, x, obmean, obstd, max_dist, yaw, sensor_span, nbins; rng=Random.GLOBAL_RNG)
     out = ScalableES.forward(nn, x, obmean, obstd; rng=rng)
 
     bin_idx = argmax(out)

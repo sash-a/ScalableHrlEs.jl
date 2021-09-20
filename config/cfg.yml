@@ -1,4 +1,4 @@
-name: pointmaze-normvectarg-vecctrl-rewarttarg-test
+name: pointmaze-normvectarg-onehot-rewarttarg-test
 env:
   name: PointMaze
   steps: 1000  # max steps for env
@@ -10,3 +10,4 @@ hrl:
   pretrained: ""
   interval: 50
   cdist: 4
+  onehot: true
