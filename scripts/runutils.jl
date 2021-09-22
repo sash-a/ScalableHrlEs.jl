@@ -23,9 +23,11 @@ function run(conf, mjpath)
     println("n threads $(Threads.nthreads())")
 
     seed = 4321  # auto generate and share this?
-    envs = HrlMuJoCoEnvs.tconstruct(nametoenv(conf.env.name), Threads.nthreads(); seed=seed)
+    envs = HrlMuJoCoEnvs.tconstruct(nametoenv(conf.env.name)..., Threads.nthreads(); seed=seed)
+    # envs = HrlMuJoCoEnvs.tconstruct(HrlMuJoCoEnvs.MazeEnv, HrlMuJoCoEnvs.PointMass, Threads.nthreads(); seed=seed)
 
     env = first(envs)
+    @show env
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
     coutsize = conf.hrl.onehot ? 8 : 2
@@ -71,16 +73,19 @@ function parseargs()
 end
 
 function nametoenv(name::String)
-    if occursin("AntMaze", name)
-        HrlMuJoCoEnvs.AntMaze
-    elseif occursin("AntGather", name)
-        HrlMuJoCoEnvs.AntGatherEnv
-    elseif occursin("PointMaze", name)
-        HrlMuJoCoEnvs.PointMazeEnv
-    elseif occursin("PointGather", name)
-        HrlMuJoCoEnvs.PointGatherEnv
-    else
-        print("Unrecognized environment name")
-        nothing
+    robot = nothing
+    env = nothing
+    if occursin("Ant", name)
+        robot = HrlMuJoCoEnvs.Ant
+    elseif occursin("Point", name)
+        robot = HrlMuJoCoEnvs.PointMass
     end
+
+    if occursin("Maze", name)
+        env = HrlMuJoCoEnvs.MazeEnv
+    elseif occursin("Gather", name)
+        env = HrlMuJoCoEnvs.GatherEnv
+    end
+    
+    env, robot
 end

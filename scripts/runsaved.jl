@@ -16,15 +16,18 @@ using ArgParse
 function runsaved(runname, gen, intervals::Int, cdist::Float32)
     mj_activate("/home/sasha/.mujoco/mjkey.txt")
 
-    @load "saved/$(runname)/model-obstat-opt-gen$gen.bson" model obstat opt
+    @load "saved/$(runname)/model-obstat-opt-gen$gen.bson" policy obstat opt
 
     # env = HrlMuJoCoEnvs.AntGatherEnv(viz=true)
-    env = HrlMuJoCoEnvs.PointMazeEnv()
-    env.target = [0, 16]
+    env = HrlMuJoCoEnvs.AntMazeEnv()
 
     # states = collectstates(model, env, obmean, obstd)
     obmean = ScalableHrlEs.mean(obstat)
     obstd = ScalableHrlEs.std(obstat)
+
+    @show policy
+    model = ScalableHrlEs.to_nn(policy)
+    @show model
     # @show first(ScalableHrlEs.hrl_eval_net((cnn, pnn), env, obmean, obstd, intervals, 1000, 100, cdist))
     visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 1000, cdist))
 end
@@ -44,21 +47,20 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
     global targ_start_dist
     global rew
 
-    env.target = [5, 16]
+    env.target = [0, 16]
 
     cnn, pnn = nns
     pos = HrlMuJoCoEnvs._torso_xy(env)
 
     sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
-    nbins = hasproperty(env, :nbins) ? env.nbins : 10
+    nbins = hasproperty(env, :nbins) ? env.nbins : 8
     if hasproperty(env, :target)
         getsim(env).mn[:geom_pos][ngeom=:target_geom] = [env.target..., 0]
     end
 
     ob = LyceumMuJoCo.getobs(env)
     if step % cintervals == 0  # step the controller
-        # c_raw_out = ScalableHrlEs.cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, sensor_span, nbins, cdist)
-        c_raw_out = ScalableES.forward(cnn, ob, cobmean, cobstd) * cdist
+        c_raw_out = ScalableHrlEs.forward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins)
         rel_target = ScalableHrlEs.outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
         # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
         abs_target = rel_target + pos

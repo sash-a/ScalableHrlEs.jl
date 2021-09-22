@@ -1,11 +1,11 @@
-name: pointmaze-normvectarg-onehot-rewarttarg-test
+name: antmaze-refactortest3
 env:
-  name: PointMaze
-  steps: 1000  # max steps for env
+  name: AntMaze
+  steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy
   policies: 256  # policies in one generation
-  generations: 700
+  generations: 1000
 hrl:
   pretrained: ""
   interval: 50
