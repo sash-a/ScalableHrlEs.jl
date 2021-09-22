@@ -23,9 +23,12 @@ function run(conf, mjpath)
     println("n threads $(Threads.nthreads())")
 
     seed = 4321  # auto generate and share this?
-    envs = HrlMuJoCoEnvs.tconstruct(nametoenv(conf.env.name), Threads.nthreads(); seed=seed)
+    @show nametoenv(conf.env.name) conf.env.name
+    envs = LyceumMuJoCo.tconstruct(nametoenv(conf.env.name), Threads.nthreads(); seed=seed)
 
     env = first(envs)
+    @show env
+    @show typeof(envs)
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
     coutsize = conf.hrl.onehot ? 8 : 2
@@ -72,7 +75,7 @@ end
 
 function nametoenv(name::String)
     if occursin("AntMaze", name)
-        HrlMuJoCoEnvs.AntMaze
+        HrlMuJoCoEnvs.AntMazeEnv
     elseif occursin("AntGather", name)
         HrlMuJoCoEnvs.AntGatherEnv
     elseif occursin("PointMaze", name)

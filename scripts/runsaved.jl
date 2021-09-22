@@ -12,19 +12,24 @@ using Flux
 using BSON: @load
 using StaticArrays
 using ArgParse
+using SharedArrays
+using Distributed
 
 function runsaved(runname, gen, intervals::Int, cdist::Float32)
     mj_activate("/home/sasha/.mujoco/mjkey.txt")
 
-    @load "saved/$(runname)/model-obstat-opt-gen$gen.bson" model obstat opt
+    @load "saved/$(runname)/policy-obstat-opt-gen$gen.bson" p obstat opt
+    obmean = ScalableHrlEs.mean(obstat)
+    obstd = ScalableHrlEs.std(obstat)
+    model = Base.invokelatest(ScalableES.to_nn, p)
 
     # env = HrlMuJoCoEnvs.AntGatherEnv(viz=true)
-    env = HrlMuJoCoEnvs.PointMazeEnv()
+    env = HrlMuJoCoEnvs.AntMazeEnv()
     env.target = [0, 16]
 
     # states = collectstates(model, env, obmean, obstd)
-    obmean = ScalableHrlEs.mean(obstat)
-    obstd = ScalableHrlEs.std(obstat)
+
+
     # @show first(ScalableHrlEs.hrl_eval_net((cnn, pnn), env, obmean, obstd, intervals, 1000, 100, cdist))
     visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 1000, cdist))
 end
@@ -57,8 +62,7 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
 
     ob = LyceumMuJoCo.getobs(env)
     if step % cintervals == 0  # step the controller
-        # c_raw_out = ScalableHrlEs.cforward(cnn, ob, LyceumMuJoCo._torso_ang(env), cobmean, cobstd, sensor_span, nbins, cdist)
-        c_raw_out = ScalableES.forward(cnn, ob, cobmean, cobstd) * cdist
+        c_raw_out = ScalableHrlEs.forward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins)
         rel_target = ScalableHrlEs.outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
         # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
         abs_target = rel_target + pos
@@ -69,7 +73,7 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
     end
 
     rel_target = abs_target - pos  # update rel_target each time
-    dist = HrlMuJoCoEnvs.sqeuclidean(HrlMuJoCoEnvs._torso_xy(env), abs_target)
+    dist = HrlMuJoCoEnvs.euclidean(HrlMuJoCoEnvs._torso_xy(env), abs_target)
     pob = ScalableHrlEs.encode_prim_obs(ob, env, rel_target, dist / 1000)
     act = ScalableES.forward(pnn, pob, pobmean, pobstd)
     LyceumMuJoCo.setaction!(env, act)
