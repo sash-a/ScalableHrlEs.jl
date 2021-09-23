@@ -1,7 +1,7 @@
-name: antmaze-donefix-nohot
+name: antmaze-testeval
 env:
   name: AntMaze
-  steps: 1000  # max steps for env
+  steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy
   policies: 256  # policies in one generation
