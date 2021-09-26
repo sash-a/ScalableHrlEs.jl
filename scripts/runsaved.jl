@@ -15,21 +15,8 @@ using ArgParse
 using SharedArrays
 using Distributed
 
-function runsaved(runname, gen, intervals::Int, cdist::Float32)
-    mj_activate("/home/sasha/.mujoco/mjkey.txt")
 
-    @load "saved/$(runname)/policy-obstat-opt-gen$gen.bson" p obstat opt
-    obmean = ScalableHrlEs.mean(obstat)
-    obstd = ScalableHrlEs.std(obstat)
-    model = Base.invokelatest(ScalableES.to_nn, p)
-
-    env = HrlMuJoCoEnvs.AntMazeEnv()
-    # env.target = [0, 16]
-
-    # @show first(ScalableHrlEs.hrl_eval_net(model, env, obmean, obstd, intervals, 1000, 100, cdist; cforward=ScalableHrlEs.forward))
-    evalenv_withtarg(model, env, obmean, obstd, [0, 16], 5, intervals, 500, 10, cdist; cforward=ScalableHrlEs.forward)
-    # visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 1000, cdist))
-end
+# visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 1000, cdist))
 
 abs_target = [0, 0]
 rel_target = [0, 0]
@@ -46,7 +33,7 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
     global targ_start_dist
     global rew
 
-    env.target = [0, 16]
+    # env.target = [0, 16]
 
     cnn, pnn = nns
     pos = HrlMuJoCoEnvs._torso_xy(env)
@@ -104,9 +91,11 @@ function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cob
 
     sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
     nbins = hasproperty(env, :nbins) ? env.nbins : 8
-
+    
     for ep in 1:episodes
         LyceumMuJoCo.reset!(env)
+        env.target = targ
+
         died = false
 
         pos = zeros(2)
@@ -180,7 +169,7 @@ s = ArgParseSettings()
     "--intervals", "-i"
         help = "how often the controller suggests a target"
         arg_type = Int
-        default = 200
+        default = 25
     "--dist", "-d"
         help = "max distance from agent controller can recommend"
         arg_type = Float32
@@ -188,4 +177,18 @@ s = ArgParseSettings()
 end
 args = parse_args(s)
 
-runsaved(args["runname"], args["generation"], args["intervals"], args["dist"])
+mj_activate("/home/sasha/.mujoco/mjkey.txt")
+env = HrlMuJoCoEnvs.AntPushEnv()
+
+runname = args["runname"]
+gen = args["generation"]
+intervals = args["intervals"]
+cdist = args["dist"]
+
+@load "saved/$(runname)/policy-obstat-opt-gen$gen.bson" p obstat opt
+obmean = ScalableHrlEs.mean(obstat)
+obstd = ScalableHrlEs.std(obstat)
+model = Base.invokelatest(ScalableES.to_nn, p)
+
+@show evalenv_withtarg(model, env, obmean, obstd, [0, 16], 5, intervals, 500, 10, cdist; cforward=ScalableHrlEs.forward)
+visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 500, cdist))

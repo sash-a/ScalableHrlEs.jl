@@ -1,6 +1,6 @@
-name: antmaze-testeval
+name: antpush-test
 env:
-  name: AntMaze
+  name: AntPush
   steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy

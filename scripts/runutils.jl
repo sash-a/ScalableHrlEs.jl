@@ -82,6 +82,8 @@ function nametoenv(name::String)
         HrlMuJoCoEnvs.PointMazeEnv
     elseif occursin("PointGather", name)
         HrlMuJoCoEnvs.PointGatherEnv
+    elseif occursin("AntPush", name)
+        HrlMuJoCoEnvs.AntPushEnv
     else
         print("Unrecognized environment name")
         nothing

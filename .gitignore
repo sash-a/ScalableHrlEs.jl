@@ -1,4 +1,7 @@
 tensorboard_logs/
+csv_logs/
+scripts/tflogs2pandas.py
+scripts/viz.jl
 
 saved/*
 !saved/.gitkeep
