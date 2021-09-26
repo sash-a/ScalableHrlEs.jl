@@ -59,7 +59,9 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     f = (nns, e, obmean, obstd) -> hrl_run_env(nns, e, obmean, obstd, interval, steps, 
                                                 episodes, cdist; cforward=cforward)
     eval_gatherenv = env isa HrlMuJoCoEnvs.AbstractGatherEnv
-    eval_mazeenv = env isa HrlMuJoCoEnvs.AbstractMazeEnv || env isa HrlMuJoCoEnvs.AbstractPushEnv
+    eval_mazeenv   = env isa HrlMuJoCoEnvs.AbstractMazeEnv || 
+                     env isa HrlMuJoCoEnvs.AbstractPushEnv || 
+                     env isa HrlMuJoCoEnvs.AbstractFallEnv
     evalfn = (nns, e, obmean, obstd) -> first(first(hrl_run_env(nns, e, obmean, obstd, interval, steps, 10, cdist; 
                                                             cforward=cforward, rng=nothing,
                                                             earlystop_eval=eval_gatherenv, maze_eval=eval_mazeenv)))
