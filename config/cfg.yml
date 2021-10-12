@@ -1,6 +1,6 @@
-name: antmaze-refactortest3
+name: antgather-refactortest3
 env:
-  name: AntMaze
+  name: AntGather
   steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy
