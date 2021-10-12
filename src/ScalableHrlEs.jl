@@ -56,11 +56,17 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     opt = ScalableES.isroot(comm) ? HrlAdam(length(p.cπ.θ), length(p.pπ.θ), η) : nothing
 
     cforward = onehot ? onehot_forward : forward
-    f = (nns, e, obmean, obstd) -> hrl_eval_net(nns, e, obmean, obstd, interval, steps, 
+    f = (nns, e, obmean, obstd) -> hrl_run_env(nns, e, obmean, obstd, interval, steps, 
                                                 episodes, cdist; cforward=cforward)
-
+    eval_gatherenv = env isa HrlMuJoCoEnvs.AbstractGatherEnv
+    eval_mazeenv   = env isa HrlMuJoCoEnvs.AbstractMazeEnv || 
+                     env isa HrlMuJoCoEnvs.AbstractPushEnv || 
+                     env isa HrlMuJoCoEnvs.AbstractFallEnv
+    evalfn = (nns, e, obmean, obstd) -> first(first(hrl_run_env(nns, e, obmean, obstd, interval, steps, 10, cdist; 
+                                                            cforward=cforward, rng=nothing,
+                                                            earlystop_eval=eval_gatherenv, maze_eval=eval_mazeenv)))
     println("Initialization done")
-    ScalableES.run_gens(gens, name, p, nt, f, envs, npolicies, opt, obstat, tblg, comm)
+    ScalableES.run_gens(gens, name, p, nt, f, evalfn, envs, npolicies, opt, obstat, tblg, comm)
 
     model = ScalableES.to_nn(p)
     ScalableES.@save joinpath(@__DIR__, "..", "saved", name, "model-obstat-opt-final.bson") model obstat opt
@@ -89,7 +95,6 @@ end
 
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::ScalableES.ThreadComm) = SharedVector{HrlEsResult{Float64}}(n)
-# don't like the hardcoded +3 but not sure how to get round this
 ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape + 3, 0f0)
 
 
@@ -104,10 +109,9 @@ function encode_prim_obs(obs::Vector{T}, env, targ_vec, targ_dist) where T <: Ab
     vcat(angle_encode_target(targ_vec, LyceumMuJoCo._torso_ang(env)), [targ_dist], obs)
 end
 
-function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), 
-                    cintervals::Int, steps::Int, episodes::Int, cdist::Float32; cforward=onehot_forward)
-    cnn, pnn = nns
-    
+function hrl_run_env(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), 
+                    cintervals::Int, steps::Int, episodes::Int, cdist::Float32; 
+                    cforward=onehot_forward, rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)    
     cobs = Vector{Vector{Float64}}()
     pobs = Vector{Vector{Float64}}()
 
@@ -115,73 +119,124 @@ function hrl_eval_net(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
     pr = 0
 	step = 0
 
-    rewarded_prox = false  # rewarded primitive for being close to target
-    sqrthalf = sqrt(1/2)
-
-    sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
-    nbins = hasproperty(env, :nbins) ? env.nbins : 8
-
 	for ep in 1:episodes
-		LyceumMuJoCo.reset!(env)
-        died = false
-        
-        pos = zeros(2)
-        rel_target = zeros(2)
-        abs_target = zeros(2)
-        
-        targ_start_dist = 0  # dist from target when controller suggests position
-        d_old = 0f0
-
-		for i in 0:steps - 1
-            ob = LyceumMuJoCo.getobs(env)
-
-            if i % cintervals == 0  # step the controller
-                c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins)
-                rel_target = outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
-                # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
-                abs_target = rel_target + pos
-                rewarded_prox = false
-                push!(cobs, ob)
-
-                targ_start_dist = d_old = HrlMuJoCoEnvs.euclidean(abs_target, pos)
-            end
-
-            rel_target = abs_target - pos  # update rel_target each time
-            # pob = vcat(rel_target, ob)
-            pob = encode_prim_obs(ob, env, rel_target, d_old / 1000)
-			act = ScalableES.forward(pnn, pob, pobmean, pobstd)
-			LyceumMuJoCo.setaction!(env, act)
-			LyceumMuJoCo.step!(env)
-
-			step += 1
-			push!(pobs, pob)  # propogate ob recording to here, don't have to alloc mem if not using obs
-			
-            # calculating rewards
-            pos = HrlMuJoCoEnvs._torso_xy(env)
-            d_new = HrlMuJoCoEnvs.euclidean(pos, abs_target)
-
-            cr += LyceumMuJoCo.getreward(env)
-            # pr += (d_old - d_new) / LyceumMuJoCo.timestep(env)
-            # if d_new < 1^2 && !rewarded_prox
-            #     rewarded_prox = true
-            # end
-            pr += 1 - (d_new / targ_start_dist)
-            pr += d_new < 1 ? 1 : 0
-            
-            d_old = d_new
-            
-			if LyceumMuJoCo.isdone(env) 
-                died = true
-                break
-             end
-		end
+        (ep_cr, ep_pr), ep_step, (ep_cobs, ep_pobs) = _one_episode(nns, env, (cobmean, pobmean), (cobstd, pobstd), 
+                    cintervals, steps, episodes, cdist; rng = rng,
+                    cforward=cforward, earlystop_eval=earlystop_eval, maze_eval=maze_eval)
+        cr += ep_cr
+        pr += ep_pr
+        step += ep_step
+        cobs = vcat(cobs, ep_cobs)
+        pobs = vcat(pobs, ep_pobs)
 	end
 	# @show rew step
 	(cr / episodes, pr / episodes), step, (cobs, pobs)
 end
 
-# so that it matches the signature of ctrlforward
-forward(nn, x, obmean, obstd, cdist, _, _, _) = ScalableES.forward(nn, x, obmean, obstd) * cdist
+function hrl_threaded_run_env(nns::Tuple{Chain, Chain}, envs, (cobmean, pobmean), (cobstd, pobstd), 
+                    cintervals::Int, steps::Int, episodes::Int, cdist::Float32; cforward=onehot_forward, 
+                    rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)
+    cobs = Vector{Vector{Float64}}()
+    pobs = Vector{Vector{Float64}}()
+
+	cr = 0
+    pr = 0
+	step = 0
+
+	ScalableES.Threads.@threads for ep in 1:episodes
+        env = envs[ScalableES.Threads.threadid()]
+        (ep_cr, ep_pr), ep_step, (ep_cobs, ep_pobs) = _one_episode(nns, env, (cobmean, pobmean), (cobstd, pobstd), 
+                                                                cintervals, steps, episodes, cdist; cforward=cforward, 
+                                                                rng=rng, earlystop_eval=earlystop_eval, maze_eval=maze_eval)
+        cr += ep_cr
+        pr += ep_pr
+        step += ep_step
+        cobs = vcat(cobs, ep_cobs)
+        pobs = vcat(pobs, ep_pobs)
+	end
+	# @show rew step
+	(cr / episodes, pr / episodes), step, (cobs, pobs)
+end
+
+function _one_episode(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), 
+                      cintervals::Int, steps::Int, episodes::Int, cdist::Float32; 
+                      cforward=onehot_forward, rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)
+    
+    cnn, pnn = nns
+
+    cobs = Vector{Vector{Float64}}()
+    pobs = Vector{Vector{Float64}}()
+
+    cr = 0
+    pr = 0
+    step = 0
+    
+    targ_start_dist = 0  # dist from target when controller suggests position
+    d_old = 0f0
+
+    sqrthalf = sqrt(1/2)
+    
+    pos = zeros(2)
+    rel_target = zeros(2)
+    abs_target = zeros(2)
+
+    sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
+    nbins = hasproperty(env, :nbins) ? env.nbins : 8
+
+    earlystop_rew = 0
+
+    LyceumMuJoCo.reset!(env)
+    for i in 0:steps - 1
+        ob = LyceumMuJoCo.getobs(env)
+
+        if i % cintervals == 0  # step the controller
+            c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins; rng=rng)
+            rel_target = outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
+            # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
+            abs_target = rel_target + pos
+            push!(cobs, ob)
+
+            targ_start_dist = d_old = HrlMuJoCoEnvs.euclidean(abs_target, pos)
+        end
+
+        rel_target = abs_target - pos  # update rel_target each time
+        pob = encode_prim_obs(ob, env, rel_target, d_old / 1000)
+        act = ScalableES.forward(pnn, pob, pobmean, pobstd; rng=rng)
+        LyceumMuJoCo.setaction!(env, act)
+        LyceumMuJoCo.step!(env)
+
+        step += 1
+        push!(pobs, pob)  # propogate ob recording to here, don't have to alloc mem if not using obs
+        
+        # calculating rewards
+        pos = HrlMuJoCoEnvs._torso_xy(env)
+        d_new = HrlMuJoCoEnvs.euclidean(pos, abs_target)
+
+        cr += LyceumMuJoCo.getreward(env)
+        pr += 1 - (d_new / targ_start_dist) + (d_new < 1 ? 1 : 0)
+        
+        d_old = d_new
+        
+        if earlystop_eval
+            earlystop_rew = max(earlystop_rew, cr)
+        end
+
+        if LyceumMuJoCo.isdone(env) 
+            break
+        end
+    end
+
+    if earlystop_eval
+        cr = earlystop_rew
+    elseif maze_eval
+        cr = LyceumMuJoCo.geteval(env)
+    end
+
+    (cr, pr), step, (cobs, pobs)
+end
+
+# so that it matches the signature of onehot_forward
+forward(nn, x, obmean, obstd, cdist, y, s, n; rng=Random.GLOBAL_RNG) = ScalableES.forward(nn, x, obmean, obstd; rng=rng) * cdist
 function onehot_forward(nn, x, obmean, obstd, max_dist, yaw, sensor_span, nbins; rng=Random.GLOBAL_RNG)
     out = ScalableES.forward(nn, x, obmean, obstd; rng=rng)
 

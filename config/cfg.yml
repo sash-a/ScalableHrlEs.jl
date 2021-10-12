@@ -10,4 +10,4 @@ hrl:
   pretrained: ""
   interval: 50
   cdist: 4
-  onehot: true
+  onehot: false
