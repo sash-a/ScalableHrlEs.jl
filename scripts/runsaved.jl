@@ -74,7 +74,7 @@ end
 
 
 function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cobstd, pobstd), targ, targdist,
-    cintervals::Int, steps::Int, episodes::Int, cdist::Float32; cforward=ScalableHrlEs.onehot_forward)
+    cintervals::Int, steps::Int, episodes::Int, cdist::Float32; cforward=ScalableHrlEs.forward)
     cnn, pnn = nns
 
     cobs = Vector{Vector{Float64}}()
@@ -178,7 +178,9 @@ end
 args = parse_args(s)
 
 mj_activate("/home/sasha/.mujoco/mjkey.txt")
-env = HrlMuJoCoEnvs.AntPushEnv()
+env = HrlMuJoCoEnvs.PointPushEnv(easy=false)
+@show actionspace(env)
+@show obsspace(env)
 
 runname = args["runname"]
 gen = args["generation"]

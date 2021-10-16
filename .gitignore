@@ -1,5 +1,7 @@
 tensorboard_logs/
 csv_logs/
+
+viz/*
 scripts/tflogs2pandas.py
 scripts/viz.jl
 

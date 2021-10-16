@@ -1,7 +1,7 @@
-name: antpush-test
+name: pointpush-ez
 env:
-  name: AntPush
-  steps: 500  # max steps for env
+  name: PointPush
+  steps: 1000  # max steps for env
 training:
   episodes: 5  # episodes per policy
   policies: 256  # policies in one generation

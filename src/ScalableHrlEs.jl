@@ -221,7 +221,7 @@ function _one_episode(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             earlystop_rew = max(earlystop_rew, cr)
         end
 
-        if LyceumMuJoCo.isdone(env) 
+        if LyceumMuJoCo.isdone(env)
             break
         end
     end

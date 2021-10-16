@@ -24,7 +24,7 @@ function run(conf, mjpath)
 
     seed = 4321  # auto generate and share this?
     @show nametoenv(conf.env.name) conf.env.name
-    envs = LyceumMuJoCo.tconstruct(nametoenv(conf.env.name), Threads.nthreads(); seed=seed)
+    envs = LyceumMuJoCo.tconstruct(HrlMuJoCoEnvs.make(conf.env.name), Threads.nthreads(); easy=true, seed=seed)
 
     env = first(envs)
     @show env
