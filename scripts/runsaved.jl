@@ -26,7 +26,7 @@ rew = 0
 
 const sqrthalf = sqrt(1/2)
 
-function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), (cobstd, pobstd), steps::Int, cdist)
+function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), (cobstd, pobstd), steps::Int, cdist; cforward=ScalableHrlEs.forward)
     global abs_target 
     global rel_target
     global step
@@ -41,21 +41,23 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
     sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
     nbins = hasproperty(env, :nbins) ? env.nbins : 10
     if hasproperty(env, :target)
-        getsim(env).mn[:geom_pos][ngeom=:target_geom] = [env.target..., 0]
+        getsim(env).mn[:geom_pos][ngeom=:target_geom] = env.target#[env.target..., 0]
     end
 
     ob = LyceumMuJoCo.getobs(env)
     if step % cintervals == 0  # step the controller
-        println("$step: $(HrlMuJoCoEnvs.euclidean(env.target, HrlMuJoCoEnvs._torso_xy(env)))")
-
-        c_raw_out = ScalableHrlEs.forward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins; rng=nothing)
+        c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins; rng=nothing)
         rel_target = ScalableHrlEs.outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
-        # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
         abs_target = rel_target + pos
-        getsim(env).mn[:geom_pos][ngeom=:recomend_geom] = [abs_target..., 0]
+        getsim(env).mn[:geom_pos][ngeom=:recomend_geom] = [abs_target..., env.target[3]]
 
-        @show abs_target
+        dist = HrlMuJoCoEnvs.euclidean(env.target, HrlMuJoCoEnvs._torso_xyz(env))
+        @show step
+        @show env.start_targ_dist
+        @show dist/env.start_targ_dist
+        @show dist
         @show rew
+        println("\n\n")
     end
 
     rel_target = abs_target - pos  # update rel_target each time
@@ -148,7 +150,7 @@ function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cob
                 break
             end
         end
-        if HrlMuJoCoEnvs.euclidean(HrlMuJoCoEnvs._torso_xy(env), targ) < targdist
+        if HrlMuJoCoEnvs.euclidean(HrlMuJoCoEnvs._torso_xyz(env), targ) < targdist
             max_rs += 1
             @show :reached
         end
@@ -163,6 +165,9 @@ s = ArgParseSettings()
     "runname"
         required = true
         help = "run name in saved folder"
+    "env"
+        required = true
+        help = "HrlMuJoCoEnvs environment name"
     "generation"
         required = true
         help = "generation number to view"
@@ -174,23 +179,28 @@ s = ArgParseSettings()
         help = "max distance from agent controller can recommend"
         arg_type = Float32
         default = 4f0
+    "--onehot"
+        help = "if provided then controller uses one hot mode"
+        action = :store_true
 end
 args = parse_args(s)
 
-mj_activate("/home/sasha/.mujoco/mjkey.txt")
-env = HrlMuJoCoEnvs.PointPushEnv(easy=false)
-@show actionspace(env)
-@show obsspace(env)
-
 runname = args["runname"]
+envname = args["env"]
 gen = args["generation"]
 intervals = args["intervals"]
 cdist = args["dist"]
+cforward = args["onehot"] ? ScalableHrlEs.onehot_forward : ScalableHrlEs.forward
+
+mj_activate("/home/sasha/.mujoco/mjkey.txt")
+env = first(LyceumMuJoCo.tconstruct(HrlMuJoCoEnvs.make(envname), 1))
+@show actionspace(env)
+@show obsspace(env)
 
 @load "saved/$(runname)/policy-obstat-opt-gen$gen.bson" p obstat opt
 obmean = ScalableHrlEs.mean(obstat)
 obstd = ScalableHrlEs.std(obstat)
 model = Base.invokelatest(ScalableES.to_nn, p)
 
-@show evalenv_withtarg(model, env, obmean, obstd, [0, 16], 5, intervals, 500, 10, cdist; cforward=ScalableHrlEs.forward)
-visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 500, cdist))
+@show evalenv_withtarg(model, env, obmean, obstd, HrlMuJoCoEnvs.FALL_TARGET, 5, intervals, 500, 10, cdist; cforward=cforward)
+visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 500, cdist; cforward=cforward))

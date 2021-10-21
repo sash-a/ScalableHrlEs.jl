@@ -19,11 +19,18 @@ function StatsBase.summarystats(results::AbstractVector{HrlEsResult{T}}) where T
     StatsBase.summarystats(map(r->r.cres, results)), StatsBase.summarystats(map(r->r.pres, results))
 end
 
+"""
+Given a robots target and current yaw, returns the sin and cos of the angle to the target
+"""
 function angle_encode_target(targetvec::AbstractVector{T}, torso_ang::T) where T <: AbstractFloat
     angle_to_target = atan(targetvec[2], targetvec[1]) - torso_ang
     [sin(angle_to_target), cos(angle_to_target)]
 end
 
+"""
+Makes sure v is outside of the range (lower, upper) 
+by rounding it to the nearest value outside the range
+"""
 function outer_clamp(v::T, lower::T, upper::T) where T <: Number
     if lower < v < upper
         delta_lower = v - lower
@@ -36,3 +43,19 @@ function outer_clamp(v::T, lower::T, upper::T) where T <: Number
 end
 
 pol2cart(rho, phi) = [rho * cos(phi), rho * sin(phi)]
+
+"""
+returns the relevant (qpos and qvel) observation range for 
+just the robots obs for the corresponding env
+"""
+function robot_obs_range(env)
+    if env isa HrlMuJoCoEnvs.AntGatherEnv
+        [1:29;]
+    elseif env isa HrlMuJoCoEnvs.AntMazeEnv
+        [4:33;]
+    elseif env isa HrlMuJoCoEnvs.AntPushEnv
+        [4:19; 22:36]
+    elseif env isa HrlMuJoCoEnvs.AntFallEnv
+        [4:19; 22:36]
+    end
+end

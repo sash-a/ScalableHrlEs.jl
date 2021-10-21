@@ -16,6 +16,8 @@ using Random
 using SharedArrays
 
 using StaticArrays
+using SharedArrays
+using Distributed
 using BSON
 using YAML
 using Configurations
@@ -26,9 +28,9 @@ include("Policy.jl")
 include("Optim.jl")
 include("Obstat.jl")
 
-function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.ThreadComm}; 
+function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.ThreadComm}; obstat=nothing,
                    gens=150, npolicies=256, interval=200, steps=1000, episodes=3, cdist=4, σ=0.02f0, nt_size=250000000, η=0.01f0, 
-                   pretrained_path="", onehot=false)
+                   ctrl_pretrained_path="", prim_pretrained_path="", onehot=false, prim_specific_obs=false)
     @assert npolicies / size(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(size(comm)))"
 
     println("Running ScalableEs")
@@ -44,27 +46,37 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     println("Creating noise table")
     nt, win = NoiseTable(nt_size, length(p.cπ.θ), σ, comm)
 
-    obstat = HrlObstat(obssize, obssize + 3, 1f-2)
+    obstat = obstat === nothing ? HrlObstat(obssize, obssize + 3, 1f-2) : obstat
     
-    if !isempty(pretrained_path)
-        loaded = BSON.load(pretrained_path, @__MODULE__)
-        model = loaded[:model]
-        obstat = loaded[:obstat]
-        p = HrlPolicy{Float32}(model...)
+    if !isempty(prim_pretrained_path)
+        loaded = BSON.load(prim_pretrained_path, @__MODULE__)
+        # pnn = ScalableES.to_nn(loaded[:p].pπ)
+        p.pπ.θ = loaded[:p].θ
+        @show length(p.pπ.θ)
+        obstat = HrlObstat(obstat.cobstat, loaded[:obstat])
+        # obstat.pobstat = loaded[:obstat]
     end
+
+    # if !isempty(ctrl_pretrained_path)
+    #     loaded = BSON.load(ctrl_pretrained_path, @__MODULE__)
+    #     p.cπ = loaded[:p].cπ
+    #     obstat.cobstat = loaded[:obstat].cobstat
+    #     p = HrlPolicy{Float32}(model...)
+    # end
 
     opt = ScalableES.isroot(comm) ? HrlAdam(length(p.cπ.θ), length(p.pπ.θ), η) : nothing
 
     cforward = onehot ? onehot_forward : forward
     f = (nns, e, obmean, obstd) -> hrl_run_env(nns, e, obmean, obstd, interval, steps, 
-                                                episodes, cdist; cforward=cforward)
-    eval_gatherenv = env isa HrlMuJoCoEnvs.AbstractGatherEnv
-    eval_mazeenv   = env isa HrlMuJoCoEnvs.AbstractMazeEnv || 
-                     env isa HrlMuJoCoEnvs.AbstractPushEnv || 
-                     env isa HrlMuJoCoEnvs.AbstractFallEnv
+                                                episodes, cdist; cforward=cforward, 
+                                                prim_specific_obs=prim_specific_obs)
+    eval_gather = env isa HrlMuJoCoEnvs.AbstractGatherEnv
+    eval_maze   = env isa HrlMuJoCoEnvs.AbstractMazeEnv || 
+                  env isa HrlMuJoCoEnvs.AbstractPushEnv || 
+                  env isa HrlMuJoCoEnvs.AbstractFallEnv
     evalfn = (nns, e, obmean, obstd) -> first(first(hrl_run_env(nns, e, obmean, obstd, interval, steps, 10, cdist; 
-                                                            cforward=cforward, rng=nothing,
-                                                            earlystop_eval=eval_gatherenv, maze_eval=eval_mazeenv)))
+                                                            cforward=cforward, rng=nothing, maze_eval=eval_maze,
+                                                            earlystop_eval=eval_gather, prim_specific_obs=prim_specific_obs)))
     println("Initialization done")
     ScalableES.run_gens(gens, name, p, nt, f, evalfn, envs, npolicies, opt, obstat, tblg, comm)
 
@@ -95,7 +107,12 @@ end
 
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::ScalableES.ThreadComm) = SharedVector{HrlEsResult{Float64}}(n)
-ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape + 3, 0f0)
+# ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape + 3, 0f0)
+
+function ScalableES.make_obstat(shape, pol::HrlPolicy)
+    (cnn, pnn) = ScalableES.to_nn(pol)
+    HrlObstat(shape, last(size(first(pnn.layers).W)), 0f0)
+end
 
 
 function ScalableES.bcast_policy!(π::HrlPolicy, comm::Comm)
@@ -111,7 +128,8 @@ end
 
 function hrl_run_env(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), 
                     cintervals::Int, steps::Int, episodes::Int, cdist::Float32; 
-                    cforward=onehot_forward, rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)    
+                    cforward=onehot_forward, prim_specific_obs=false,
+                    rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)    
     cobs = Vector{Vector{Float64}}()
     pobs = Vector{Vector{Float64}}()
 
@@ -121,33 +139,8 @@ function hrl_run_env(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd,
 
 	for ep in 1:episodes
         (ep_cr, ep_pr), ep_step, (ep_cobs, ep_pobs) = _one_episode(nns, env, (cobmean, pobmean), (cobstd, pobstd), 
-                    cintervals, steps, episodes, cdist; rng = rng,
-                    cforward=cforward, earlystop_eval=earlystop_eval, maze_eval=maze_eval)
-        cr += ep_cr
-        pr += ep_pr
-        step += ep_step
-        cobs = vcat(cobs, ep_cobs)
-        pobs = vcat(pobs, ep_pobs)
-	end
-	# @show rew step
-	(cr / episodes, pr / episodes), step, (cobs, pobs)
-end
-
-function hrl_threaded_run_env(nns::Tuple{Chain, Chain}, envs, (cobmean, pobmean), (cobstd, pobstd), 
-                    cintervals::Int, steps::Int, episodes::Int, cdist::Float32; cforward=onehot_forward, 
-                    rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)
-    cobs = Vector{Vector{Float64}}()
-    pobs = Vector{Vector{Float64}}()
-
-	cr = 0
-    pr = 0
-	step = 0
-
-	ScalableES.Threads.@threads for ep in 1:episodes
-        env = envs[ScalableES.Threads.threadid()]
-        (ep_cr, ep_pr), ep_step, (ep_cobs, ep_pobs) = _one_episode(nns, env, (cobmean, pobmean), (cobstd, pobstd), 
-                                                                cintervals, steps, episodes, cdist; cforward=cforward, 
-                                                                rng=rng, earlystop_eval=earlystop_eval, maze_eval=maze_eval)
+                    cintervals, steps, episodes, cdist; rng = rng, cforward=cforward, 
+                    prim_specific_obs=prim_specific_obs, earlystop_eval=earlystop_eval, maze_eval=maze_eval)
         cr += ep_cr
         pr += ep_pr
         step += ep_step
@@ -160,7 +153,8 @@ end
 
 function _one_episode(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), 
                       cintervals::Int, steps::Int, episodes::Int, cdist::Float32; 
-                      cforward=onehot_forward, rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)
+                      cforward=onehot_forward, prim_specific_obs=false,
+                      rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)
     
     cnn, pnn = nns
 
@@ -200,7 +194,12 @@ function _one_episode(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
         end
 
         rel_target = abs_target - pos  # update rel_target each time
-        pob = encode_prim_obs(ob, env, rel_target, d_old / 1000)
+
+        pob = ob
+        if prim_specific_obs
+            pob = ob[robot_obs_range(env)]
+        end
+        pob = encode_prim_obs(pob, env, rel_target, d_old / 1000)
         act = ScalableES.forward(pnn, pob, pobmean, pobstd; rng=rng)
         LyceumMuJoCo.setaction!(env, act)
         LyceumMuJoCo.step!(env)
