@@ -1,4 +1,4 @@
-name: test
+name: testgather
 env:
   name: AntGather
   steps: 1000  # max steps for env
@@ -10,7 +10,7 @@ hrl:
   pretrained_ctrl: ""
   # pretrained_prim: ""
   pretrained_prim: "/home/sasha/Documents/es/ScalableES/saved/remote/flagrun-i25-pretrain-fix-x30/policy-obstat-opt-gen600.bson"
-  interval: 50
+  interval: 25
   cdist: 4
   onehot: false
   prim_specific_obs: true
