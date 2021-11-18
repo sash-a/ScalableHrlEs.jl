@@ -114,7 +114,6 @@ function ScalableES.make_obstat(shape, pol::HrlPolicy)
     HrlObstat(shape, last(size(first(pnn.layers).W)), 0f0)
 end
 
-
 function ScalableES.bcast_policy!(π::HrlPolicy, comm::Comm)
 	MPI.Barrier(comm)
     π.cπ = ScalableES.bcast(π.cπ, comm)
@@ -249,5 +248,7 @@ function onehot_forward(nn, x, obmean, obstd, max_dist, yaw, sensor_span, nbins;
     angle = bin_idx * bin_res - half_span + n_bins_inv + yaw
     return pol2cart(max(dist_percent * max_dist, 1), angle)
 end
+
+include("novelty/ScalableHrlNsEs.jl")
 
 end  # module

@@ -18,6 +18,7 @@ end
     episodes::Int
     policies::Int
     generations::Int
+    pop_size::Int = 3
 end
 
 @option struct Hrl

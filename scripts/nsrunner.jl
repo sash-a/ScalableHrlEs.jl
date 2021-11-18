@@ -38,29 +38,28 @@ function run(conf, mjpath)
 
     t = now()
 
-    (cnn, pnn), obstat = make_nns(obssize, pobsize, coutsize, actsize)
+    (cnn, pnn), obstat = make_nns(obssize, pobsize, coutsize, actsize, conf.training.pop_size)
     println("nns created")
 
-    ScalableHrlEs.run_hrles(conf.name, cnn, pnn, envs, ScalableES.ThreadComm();
-                            obstat=obstat,
-                            gens=conf.training.generations, 
-                            interval=conf.hrl.interval,
-                            episodes=conf.training.episodes,
-                            npolicies=conf.training.policies,
-                            cdist=conf.hrl.cdist,
-                            onehot=conf.hrl.onehot,
-                            prim_pretrained_path=conf.hrl.pretrained_prim,
-                            prim_specific_obs=conf.hrl.prim_specific_obs)
+    ScalableHrlEs.run_hrl_nses(conf.name, cnn, pnn, envs, ScalableES.ThreadComm();
+                                obstat=obstat,
+                                gens=conf.training.generations, 
+                                interval=conf.hrl.interval, 
+                                episodes=conf.training.episodes,
+                                npolicies=conf.training.policies,
+                                cdist=conf.hrl.cdist,
+                                onehot=conf.hrl.onehot,
+                                prim_specific_obs=conf.hrl.prim_specific_obs)
                         
     println("Total time: $(now() - t)")
     println("Finalized!")
 end
 
-function make_nns(cobssize, pobssize, coutsize, actsize)
-    cnn = Chain(Dense(cobssize, 256, tanh; initW=Flux.glorot_normal, initb=Flux.glorot_normal),
+function make_nns(cobssize, pobssize, coutsize, actsize, pop_size)
+    cnns = [Chain(Dense(cobssize, 256, tanh; initW=Flux.glorot_normal, initb=Flux.glorot_normal),
                 Dense(256, 256, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal),
                 Dense(256, 256, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal),
-                Dense(256, coutsize, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal))
+                Dense(256, coutsize, tanh;initW=Flux.glorot_normal, initb=Flux.glorot_normal)) for _ in 1:pop_size]
 
     cobstat = ScalableES.Obstat(cobssize, 1f-2)
 
@@ -74,7 +73,7 @@ function make_nns(cobssize, pobssize, coutsize, actsize)
     pobstat = ScalableES.Obstat(pobssize, 1f-2)
     
 
-    (cnn, pnn), ScalableHrlEs.HrlObstat(cobstat, pobstat)
+    (cnns, pnn), ScalableHrlEs.HrlObstat(cobstat, pobstat)
 end
 
 function parseargs()
@@ -90,3 +89,6 @@ function parseargs()
     end
     parse_args(s)
 end
+
+args = parseargs()
+run(ScalableHrlEs.loadconfig(args["cfgpath"]), args["mjpath"])

@@ -8,8 +8,8 @@ training:
   generations: 700
 hrl:
   pretrained_ctrl: ""
-  pretrained_prim: "../ScalableES/saved/flagrun-i25-pretrain-fix-x30/policy-obstat-opt-gen600.bson"
+  pretrained_prim: ""
   interval: 25
   cdist: 4
   onehot: false
-  prim_specific_obs: true
+  prim_specific_obs: false
