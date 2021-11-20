@@ -96,13 +96,13 @@ end
 function ScalableES.noiseify(π::HrlPolicy, nt::ScalableES.NoiseTable)
     ind = rand(nt, max(length(π.cπ.θ), length(π.pπ.θ)))
     cpos_pol, cneg_pol, _ = ScalableES.noiseify(π.cπ, nt, ind)
-    ppos_pol, pneg_pol, _ = ScalableES.noiseify(π.pπ, nt, ind)
+    # ppos_pol, pneg_pol, _ = ScalableES.noiseify(π.pπ, nt, ind)
 
-    HrlPolicy(cpos_pol, ppos_pol), HrlPolicy(cneg_pol, pneg_pol), ind
+    HrlPolicy(cpos_pol, π.pπ), HrlPolicy(cneg_pol, π.pπ), ind
 end
 
 function ScalableES.optimize!(π::HrlPolicy, ranked::Vector{HrlEsResult{T}}, nt::NoiseTable, optim::HrlAdam, l2coeff::Float32) where T <: AbstractFloat
-    ScalableES.optimize!(π.cπ, map(r->r.cres, ranked), nt, optim.copt, l2coeff), ScalableES.optimize!(π.pπ, map(r->r.pres, ranked), nt, optim.popt, l2coeff)
+    ScalableES.optimize!(π.cπ, map(r->r.cres, ranked), nt, optim.copt, l2coeff), π.pπ  # ScalableES.optimize!(π.pπ, map(r->r.pres, ranked), nt, optim.popt, l2coeff)
 end
 
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)
