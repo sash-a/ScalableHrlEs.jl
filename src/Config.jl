@@ -18,7 +18,10 @@ end
     episodes::Int
     policies::Int
     generations::Int
+
     pop_size::Int = 3
+    behv_freq::Int = 25
+    min_nov_w::Float32 = 0.8
 end
 
 @option struct Hrl

@@ -12,7 +12,8 @@ function ScalableES.make_result(fit::NsFitType, noise_ind::Int, steps::Int)
 end
 
 function ScalableES.make_result_vec(n::Int, ::HrlPolicy, rollouts::Int, steps::Int, interval::Int, ::ScalableES.ThreadComm)
-    SharedVector{HrlNsEsResult{Float64,rollouts,steps ÷ interval}}(n)
+    npoints = interval < 0 ? 1 : steps ÷ interval
+    SharedVector{HrlNsEsResult{Float64,rollouts,npoints}}(n)
 end
 
 function ScalableES.rank(rs::AbstractVector{T}, w) where T <: HrlNsEsResult
@@ -32,7 +33,7 @@ function ScalableES.novelty(results::AbstractVector{T}, archive::Archive, n::Int
     map(r -> HrlNsEsResult(ScalableES.NsEsResult(r.cres.behaviours, ScalableES.novelty(r.cres, archive, n), r.cres.result), r.pres), results)
 end
 
-ScalableES.meanfit(rs::AbstractVector{T}) where T <: HrlNsEsResult = mean(map(r->r.cres.result.fit, rs))
+ScalableES.performance(rs::AbstractVector{T}) where T <: HrlNsEsResult = mean(map(r->r.cres.result.fit, rs))
 
 function ScalableES.loginfo(tblogger, 
                             main_fit, 

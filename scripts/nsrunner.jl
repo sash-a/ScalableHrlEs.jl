@@ -49,7 +49,9 @@ function run(conf, mjpath)
                                 npolicies=conf.training.policies,
                                 cdist=conf.hrl.cdist,
                                 onehot=conf.hrl.onehot,
-                                prim_specific_obs=conf.hrl.prim_specific_obs)
+                                prim_specific_obs=conf.hrl.prim_specific_obs,
+                                behv_freq=conf.training.behv_freq,
+                                min_w=conf.training.min_nov_w)
                         
     println("Total time: $(now() - t)")
     println("Finalized!")
