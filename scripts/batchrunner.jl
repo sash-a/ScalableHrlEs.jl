@@ -15,7 +15,7 @@ function getconfig(batchfilepath)
     overrides = Dict{String, Any}()
 
     batchconfig = YAML.load_file(batchfilepath; dicttype=Dict{String, Any})
-    for (path, options) in batchconfig
+    for (_, options) in batchconfig
         if options["nruns"] > 0
             options["nruns"] -= 1
 
@@ -23,7 +23,7 @@ function getconfig(batchfilepath)
 
             name = haskey(options, "name") ? options["name"] : name
             overrides = haskey(options, "overrides") ? options["overrides"] : overrides
-            cfgpath = path
+            cfgpath = options["path"]
 
             YAML.write_file(batchfilepath, batchconfig)
             break
@@ -32,11 +32,6 @@ function getconfig(batchfilepath)
 
     if nrun != -1 && !isempty(cfgpath)
         cfg_dict = YAML.load_file(cfgpath; dicttype=Dict{String, Any})
-
-        @show cfg_dict overrides
-
-        # return cfg_dict, overrides
-
         merged_dict = recursive_merge(cfg_dict, overrides)
         conf = ScalableHrlEs.loadconfig(merged_dict)
         conf = ScalableHrlEs.SHrlEsConfig("$(conf.name)_$(name)_$nrun", conf.env, conf.training, conf.hrl)
