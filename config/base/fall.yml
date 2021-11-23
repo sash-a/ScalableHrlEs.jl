@@ -1,0 +1,13 @@
+name: AntFall
+env:
+  name: AntFall
+  steps: 500  # max steps for env
+training:
+  episodes: 5  # episodes per policy
+  policies: 256  # policies in one generation
+  generations: 3000
+hrl:
+  interval: 25
+  cdist: 4
+  onehot: false
+  prim_specific_obs: false

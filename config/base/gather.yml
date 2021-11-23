@@ -1,14 +1,12 @@
-name: AntGather-pretrained
+name: AntGather
 env:
   name: AntGather
   steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy
   policies: 256  # policies in one generation
-  generations: 700
+  generations: 3000
 hrl:
-  pretrained_ctrl: ""
-  pretrained_prim: ""
   interval: 25
   cdist: 4
   onehot: false

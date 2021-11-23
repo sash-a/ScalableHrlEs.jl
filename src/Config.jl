@@ -25,8 +25,8 @@ end
 end
 
 @option struct Hrl
-    pretrained_ctrl::String
-    pretrained_prim::String
+    pretrained_ctrl::String = ""
+    pretrained_prim::String = ""
     interval::Int
     cdist::Float32
     onehot::Bool
@@ -40,11 +40,15 @@ end
     hrl::Hrl
 end
 
-function loadconfig(file::String)
-    cfg_dict = YAML.load_file(file; dicttype=Dict{String, Any})
+function loadconfig(cfg_dict::Dict)
     # explicit conversion from string to symbol because for some reason overiding Base.convert doesn't work
     if haskey(cfg_dict["env"], "kwargs")
         cfg_dict["env"]["kwargs"] = Dict{Symbol, Any}(Symbol(k) => v for (k, v) in pairs(cfg_dict["env"]["kwargs"]))
     end
     from_dict(SHrlEsConfig, cfg_dict)
+end
+
+function loadconfig(file::String)
+    cfg_dict = YAML.load_file(file; dicttype=Dict{String, Any})
+    loadconfig(cfg_dict)
 end

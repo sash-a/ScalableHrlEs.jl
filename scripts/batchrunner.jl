@@ -3,16 +3,26 @@ include("runutils.jl")
 using YAML
 using Pidfile
 
+# merging nested dicts
+recursive_merge(x::AbstractDict...) = merge(recursive_merge, x...)
+recursive_merge(x::AbstractVector...) = cat(x...; dims=1)
+recursive_merge(x...) = x[end]
 
 function getconfig(batchfilepath)
     cfgpath = ""
     nrun = -1
+    name = ""
+    overrides = Dict{String, Any}()
+
     batchconfig = YAML.load_file(batchfilepath; dicttype=Dict{String, Any})
     for (path, options) in batchconfig
         if options["nruns"] > 0
             options["nruns"] -= 1
 
             nrun = options["nruns"]
+
+            name = haskey(options, "name") ? options["name"] : name
+            overrides = haskey(options, "overrides") ? options["overrides"] : overrides
             cfgpath = path
 
             YAML.write_file(batchfilepath, batchconfig)
@@ -21,8 +31,15 @@ function getconfig(batchfilepath)
     end
 
     if nrun != -1 && !isempty(cfgpath)
-        conf = ScalableHrlEs.loadconfig(cfgpath)
-        conf = ScalableHrlEs.SHrlEsConfig("$(conf.name)_$nrun", conf.env, conf.training, conf.hrl)
+        cfg_dict = YAML.load_file(cfgpath; dicttype=Dict{String, Any})
+
+        @show cfg_dict overrides
+
+        # return cfg_dict, overrides
+
+        merged_dict = recursive_merge(cfg_dict, overrides)
+        conf = ScalableHrlEs.loadconfig(merged_dict)
+        conf = ScalableHrlEs.SHrlEsConfig("$(conf.name)_$(name)_$nrun", conf.env, conf.training, conf.hrl)
         conf
     else
         nothing

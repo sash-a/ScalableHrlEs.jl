@@ -1,2 +1,36 @@
-config/cfg.yml:
+config/base/gather.yml:
+  overrides:
+    hrl:
+      interval: 10
+  name: "tune_interval-10"
   nruns: 2
+config/base/maze.yml:
+  overrides:
+    hrl:
+      interval: 10
+  name: "tune_interval-10"
+  nruns: 3
+config/base/push.yml:
+  overrides:
+    hrl:
+      interval: 10
+  name: "tune_interval-10"
+  nruns: 3
+config/base/gather.yml:
+  overrides:
+    hrl:
+      interval: 100
+  name: "tune_interval-100"
+  nruns: 2
+config/base/maze.yml:
+  overrides:
+    hrl:
+      interval: 100
+  name: "tune_interval-100"
+  nruns: 3
+config/base/push.yml:
+  overrides:
+    hrl:
+      interval: 100
+  name: "tune_interval-100"
+  nruns: 3

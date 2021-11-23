@@ -1,11 +1,11 @@
-name: AntFall-pretrained
+name: AntPush-pretrained
 env:
-  name: AntFall
+  name: AntPush
   steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy
   policies: 256  # policies in one generation
-  generations: 700
+  generations: 3000
 hrl:
   pretrained_ctrl: ""
   pretrained_prim: "../ScalableES/saved/flagrun-i25-pretrain-fix-x30/policy-obstat-opt-gen600.bson"

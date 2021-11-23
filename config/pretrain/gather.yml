@@ -1,18 +1,14 @@
-name: AntMaze-ns-pos_test
+name: AntGather-pretrained
 env:
-  name: AntMaze
+  name: AntGather
   steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy
   policies: 256  # policies in one generation
-  generations: 700
-
-  pop_size: 3  # number of distinct 'main' policies (for novelty search)
-  behv_freq: -1
-  min_nov_w: 0.5
+  generations: 3000
 hrl:
   pretrained_ctrl: ""
-  pretrained_prim: ""
+  pretrained_prim: "../ScalableES/saved/flagrun-i25-pretrain-fix-x30/policy-obstat-opt-gen600.bson"
   interval: 25
   cdist: 4
   onehot: false
