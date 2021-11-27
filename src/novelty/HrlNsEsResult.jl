@@ -32,7 +32,7 @@ function ScalableES.novelty(results::AbstractVector{T}, archive::Archive, n::Int
     map(r -> HrlNsEsResult(ScalableES.NsEsResult(r.cres.behaviours, ScalableES.novelty(r.cres, archive, n), r.cres.result), r.pres), results)
 end
 
-ScalableES.meanfit(rs::AbstractVector{T}) where T <: HrlNsEsResult = mean(map(r->r.cres.result.fit, rs))
+ScalableES.performance(rs::AbstractVector{T}) where T <: HrlNsEsResult = mean(map(r->r.cres.result.fit, rs))
 
 function ScalableES.loginfo(tblogger, 
                             main_fit, 
