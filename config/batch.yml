@@ -1,42 +1,42 @@
-gather_tune-100int:
+gather_tune-lr-0.1:
   overrides:
-    hrl:
-      interval: 100
-  name: "tune_interval-100"
+    training:
+      lr: 0.1
+  name: "tune_lr-0.1"
   nruns: 3
   path: "config/base/gather.yml"
-maze_tune-100int:
+gather_tune-lr-0.001:
   overrides:
-    hrl:
-      interval: 100
-  name: "tune_interval-100"
-  nruns: 3
-  path: "config/base/maze.yml"
-push_tune-100int:
-  overrides:
-    hrl:
-      interval: 100
-  name: "tune_interval-100"
-  nruns: 3
-  path: "config/base/push.yml"
-gather_tune-10int:
-  overrides:
-    hrl:
-      interval: 10
-  name: "tune_interval-10"
+    training:
+      lr: 0.001
+  name: "tune_lr-0.001"
   nruns: 3
   path: "config/base/gather.yml"
-maze_tune-10int:
+gather_tune-sigma-0.2:
+  overrides:
+    training:
+      sigma: 0.2
+  name: "tune_lr-0.2"
+  nruns: 3
+  path: "config/base/gather.yml"
+gather_tune-sigma-0.002:
+  overrides:
+    training:
+      sigma: 0.002
+  name: "tune_lr-0.002"
+  nruns: 3
+  path: "config/base/gather.yml"
+gather_tune-cdist-2:
   overrides:
     hrl:
-      interval: 10
-  name: "tune_interval-10"
+      cdist: 2
+  name: "tune_cdist-2"
   nruns: 3
-  path: "config/base/maze.yml"
-push_tune-10int:
+  path: "config/base/gather.yml"
+gather_tune-cdist-8:
   overrides:
     hrl:
-      interval: 10
-  name: "tune_interval-10"
+      cdist: 8
+  name: "tune_cdist-8"
   nruns: 3
-  path: "config/base/push.yml"
+  path: "config/base/gather.yml"

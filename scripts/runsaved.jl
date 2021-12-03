@@ -41,7 +41,7 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
     sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
     nbins = hasproperty(env, :nbins) ? env.nbins : 10
     if hasproperty(env, :target)
-        getsim(env).mn[:geom_pos][ngeom=:target_geom] = env.target#[env.target..., 0]
+        getsim(env).mn[:geom_pos][ngeom=:target_geom] = [env.target..., 0]
     end
 
     ob = LyceumMuJoCo.getobs(env)
@@ -49,9 +49,9 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
         c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins; rng=nothing)
         rel_target = ScalableHrlEs.outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
         abs_target = rel_target + pos
-        getsim(env).mn[:geom_pos][ngeom=:recomend_geom] = [abs_target..., env.target[3]]
+        getsim(env).mn[:geom_pos][ngeom=:recomend_geom] = [abs_target..., 0]
 
-        dist = HrlMuJoCoEnvs.euclidean(env.target, HrlMuJoCoEnvs._torso_xyz(env))
+        dist = HrlMuJoCoEnvs.euclidean(env.target, HrlMuJoCoEnvs._torso_xy(env))
         @show step
         @show env.start_targ_dist
         @show dist/env.start_targ_dist
@@ -150,7 +150,7 @@ function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cob
                 break
             end
         end
-        if HrlMuJoCoEnvs.euclidean(HrlMuJoCoEnvs._torso_xyz(env), targ) < targdist
+        if HrlMuJoCoEnvs.euclidean(HrlMuJoCoEnvs._torso_xy(env), targ) < targdist
             max_rs += 1
             @show :reached
         end
@@ -202,5 +202,5 @@ obmean = ScalableHrlEs.mean(obstat)
 obstd = ScalableHrlEs.std(obstat)
 model = Base.invokelatest(ScalableES.to_nn, p)
 
-@show evalenv_withtarg(model, env, obmean, obstd, HrlMuJoCoEnvs.FALL_TARGET, 5, intervals, 500, 10, cdist; cforward=cforward)
+@show evalenv_withtarg(model, env, obmean, obstd, HrlMuJoCoEnvs.MAZE_TARGET, 5, intervals, 500, 10, cdist; cforward=cforward)
 visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 500, cdist; cforward=cforward))

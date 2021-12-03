@@ -45,6 +45,8 @@ function run(conf, mjpath)
                             obstat=obstat,
                             gens=conf.training.generations, 
                             interval=conf.hrl.interval,
+                            σ=conf.training.sigma,
+                            η=conf.training.lr,
                             episodes=conf.training.episodes,
                             npolicies=conf.training.policies,
                             cdist=conf.hrl.cdist,

@@ -22,6 +22,8 @@ end
     pop_size::Int = 3
     behv_freq::Int = 25
     min_nov_w::Float32 = 0.8
+    sigma::Float32 = 0.02
+    lr::Float32 = 0.01
 end
 
 @option struct Hrl
