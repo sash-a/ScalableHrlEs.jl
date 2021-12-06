@@ -9,6 +9,7 @@ using Base.Threads
 using Flux
 using Dates
 using Random
+
 using ArgParse
 using BSON
 using StaticArrays
@@ -30,7 +31,7 @@ function run(conf, mjpath)
     @show conf.env.kwargs
     envs = LyceumMuJoCo.tconstruct(HrlMuJoCoEnvs.make(conf.env.name), Threads.nthreads(); conf.env.kwargs...)
     env = first(envs)
-    @show env
+    # @show env
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
     coutsize = conf.hrl.onehot ? 8 : 2

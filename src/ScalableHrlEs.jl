@@ -115,9 +115,8 @@ function ScalableES.make_obstat(shape, pol::HrlPolicy)
 end
 
 function ScalableES.bcast_policy!(π::HrlPolicy, comm::Comm)
-	MPI.Barrier(comm)
-    π.cπ = ScalableES.bcast(π.cπ, comm)
-	π.pπ = ScalableES.bcast(π.pπ, comm)
+    ScalableES.bcast_policy!(π.cπ, comm)
+    ScalableES.bcast_policy!(π.pπ, comm)
 end
 function ScalableES.bcast_policy!(::HrlPolicy, ::ScalableES.ThreadComm) end
 
