@@ -92,6 +92,48 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     end
 end
 
+"""
+Runs the evaluate loop for SHES: perturb, run env, store results
+
+    Each policy is perturbed four times and results are stored as follows:
+    controller: [pos perturb, pos perturb, neg perturb, neg perturb, ...]
+    primitive: [pos perturb, neg perturb, pos perturb, neg perturb, ...]
+
+    `results` and `obstat` are empty containers of the correct type
+"""
+function evaluate(pol::HrlPolicy, nt, f, envs, n::Int, results, obstat)
+	l = ReentrantLock()
+
+	Threads.@threads for i in 1:(n ÷ 2)
+		env = envs[Threads.threadid()]
+
+		ppπ, pnπ, nnπ, npπ, noise_ind = ScalableES.noiseify(pol, nt)
+
+		ppfit, ppsteps, ppobs = f(ScalableES.to_nn(ppπ), env)
+		nnfit, nnsteps, nnobs = f(ScalableES.to_nn(nnπ), env)
+		npfit, npsteps, npobs = f(ScalableES.to_nn(npπ), env)
+		pnfit, pnsteps, pnobs = f(ScalableES.to_nn(pnπ), env)
+
+
+		if rand() < 0.01
+			Base.@lock l begin
+				# obstat = add_obs(obstat, vcat(pobs, nobs))
+				# TODO shared arrays here also?
+				obstat = ScalableES.add_obs(obstat, ppobs)
+				obstat = ScalableES.add_obs(obstat, nnobs)
+                obstat = ScalableES.add_obs(obstat, pnobs)
+				obstat = ScalableES.add_obs(obstat, npobs)
+			end
+		end
+		results[i * 4 - 3] = ScalableES.make_result(ppfit, noise_ind, ppsteps)
+		results[i * 4 - 2] = ScalableES.make_result(pnfit, noise_ind, pnsteps)
+		results[i * 4 - 1] = ScalableES.make_result(npfit, noise_ind, npsteps)
+		results[i * 4]     = ScalableES.make_result(nnfit, noise_ind, nnsteps)
+	end
+
+	results, obstat
+end
+
 function ScalableES.noiseify(π::Policy, nt::NoiseTable, ind::Int)
     noise = ScalableES.sample(nt, ind, length(π.θ))
 	Policy(π.θ .+ noise, π._re), Policy(π.θ .- noise, π._re), ind
@@ -102,11 +144,16 @@ function ScalableES.noiseify(π::HrlPolicy, nt::ScalableES.NoiseTable)
     cpos_pol, cneg_pol, _ = ScalableES.noiseify(π.cπ, nt, ind)
     ppos_pol, pneg_pol, _ = ScalableES.noiseify(π.pπ, nt, ind)
 
-    HrlPolicy(cpos_pol, ppos_pol), HrlPolicy(cneg_pol, pneg_pol), ind
+    HrlPolicy(cpos_pol, ppos_pol), HrlPolicy(cpos_pol, pneg_pol), HrlPolicy(cneg_pol, pneg_pol), HrlPolicy(cneg_pol, ppos_pol), ind
 end
 
 function ScalableES.optimize!(π::HrlPolicy, ranked::Vector{HrlEsResult{T}}, nt::NoiseTable, optim::HrlAdam, l2coeff::Float32) where T <: AbstractFloat
-    ScalableES.optimize!(π.cπ, map(r->r.cres, ranked), nt, optim.copt, l2coeff), ScalableES.optimize!(π.pπ, map(r->r.pres, ranked), nt, optim.popt, l2coeff)
+    # ScalableES.optimize!(π.cπ, map(r->r.cres, ranked), nt, optim.copt, l2coeff), ScalableES.optimize!(π.pπ, map(r->r.pres, ranked), nt, optim.popt, l2coeff)
+    cgrad = l2coeff * π.cπ.θ - ScalableES.approxgrad(π.cπ, nt, map(r->r.cres, ranked)) ./ (length(ranked) * 4)
+	π.cπ.θ .+= optimize(optim.copt, cgrad)
+
+    pgrad = l2coeff * π.cπ.θ - ScalableES.approxgrad(π.cπ, nt, map(r->r.cres, ranked)) ./ (length(ranked) * 4)
+	π.cπ.θ .+= optimize(optim.popt, pgrad)
 end
 
 ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)

@@ -9,10 +9,23 @@ function ScalableES.make_result(fit::Tuple{Float64, Float64}, noise_ind::Int, st
 end
 
 function ScalableES.rank(results::AbstractVector{HrlEsResult{T}}) where T
-    cranked = ScalableES.rank(map(r->r.cres, results))
-    pranked = ScalableES.rank(map(r->r.pres, results))
+    # need to rank separately because positive and negative perturbs are stored in different order for ctrl and prim
+    # ranking controller
+    cres = map(r->r.cres, results)
+    cranked = map((r,f)->ScalableES.EsResult(f, r.ind, r.steps), results, ScalableES.rank((r->r.fit).(cres)))
+	map(((p1,p2,n1,n2),) ->  # controller returns positives, positive, negative, negative...
+        ScalableES.EsResult(p1.fit + p2.fit - n1.fit - n2.fit, p1.ind, p1.steps + p2.steps + n1.steps + n2.steps), 
+        ScalableES.partition(cranked, 4)
+    )
+    # ranking primitive
+    pres = map(r->r.pres, results)
+    pranked = map((r,f)->ScalableES.EsResult(f, r.ind, r.steps), results, ScalableES.rank((r->r.fit).(pres)))
+	map(((p1,n1,p2,n2),) ->  # primitive returns positive, negative, positive, negative..
+        ScalableES.EsResult(p1.fit + p2.fit - n1.fit - n2.fit, p1.ind, p1.steps + p2.steps + n1.steps + n2.steps), 
+        ScalableES.partition(pranked, 4)
+    ) 
 
-    map((c, p) -> HrlEsResult(c, p), cranked, pranked)
+    map((c, p) -> HrlEsResult(c, p), cranked, pranked)  # pack results back into HRL result
 end
 
 function StatsBase.summarystats(results::AbstractVector{HrlEsResult{T}}) where T
