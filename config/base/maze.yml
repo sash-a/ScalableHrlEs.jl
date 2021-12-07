@@ -1,4 +1,4 @@
-name: AntMaze-abstargetobs-mul
+name: AntMaze-mpitest
 env:
   name: AntMaze
   steps: 500  # max steps for env

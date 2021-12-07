@@ -34,8 +34,10 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     @assert npolicies / size(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(size(comm)))"
 
     println("Running ScalableEs")
-    tblg = ScalableES.TBLogger("tensorboard_logs/$(name)", min_level=ScalableES.Logging.Info)
-
+    tblg = nothing
+    if ScalableES.isroot(comm)
+        tblg = ScalableES.TBLogger("tensorboard_logs/$(name)", min_level=ScalableES.Logging.Info)
+    end
     env = first(envs)
     obssize = length(ScalableES.obsspace(env))
 
@@ -80,8 +82,10 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     println("Initialization done")
     ScalableES.run_gens(gens, name, p, nt, f, evalfn, envs, npolicies, opt, obstat, tblg, comm)
 
-    model = ScalableES.to_nn(p)
-    ScalableES.@save joinpath(@__DIR__, "..", "saved", name, "model-obstat-opt-final.bson") model obstat opt
+    if ScalableES.isroot(comm)
+        model = ScalableES.to_nn(p)
+        ScalableES.@save joinpath(@__DIR__, "..", "saved", name, "model-obstat-opt-final.bson") model obstat opt
+    end
 
     if win !== nothing
         MPI.free(win)

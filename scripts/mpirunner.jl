@@ -24,7 +24,7 @@ function run(conf, mjpath)
 
     println("Run name: $(conf.name)")
     savedfolder = joinpath(@__DIR__, "..", "saved", conf.name)
-    if !isdir(savedfolder)
+    if ScalableES.isroot(node_comm) && !isdir(savedfolder)
         mkdir(savedfolder)
     end
 
@@ -36,7 +36,6 @@ function run(conf, mjpath)
     @show conf.env.kwargs
     envs = LyceumMuJoCo.tconstruct(HrlMuJoCoEnvs.make(conf.env.name), Threads.nthreads(); conf.env.kwargs...)
     env = first(envs)
-    # @show env
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
     coutsize = conf.hrl.onehot ? 8 : 2
@@ -61,6 +60,7 @@ function run(conf, mjpath)
                             prim_specific_obs=conf.hrl.prim_specific_obs)
                         
     println("Total time: $(now() - t)")
+    MPI.Finalize()
     println("Finalized!")
 end
 
