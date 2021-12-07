@@ -1,4 +1,4 @@
-name: AntGather-test
+name: AntGather-antithetic
 env:
   name: AntGather
   steps: 500  # max steps for env
