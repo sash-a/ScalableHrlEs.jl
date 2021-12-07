@@ -31,7 +31,7 @@ include("Obstat.jl")
 function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.ThreadComm}; obstat=nothing,
                    gens=150, npolicies=256, interval=200, steps=1000, episodes=3, cdist=4, σ=0.02f0, nt_size=250000000, η=0.01f0, 
                    ctrl_pretrained_path="", prim_pretrained_path="", onehot=false, prim_specific_obs=false)
-    @assert npolicies / size(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(size(comm)))"
+    @assert npolicies / ScalableES.nnodes(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(ScalableES.nnodes(comm)))"
 
     println("Running ScalableEs")
     tblg = nothing
