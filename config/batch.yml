@@ -1,42 +1,42 @@
-gather_tune-lr-0.1:
-  overrides:
-    training:
-      lr: 0.1
-  name: "tune_lr-0.1"
-  nruns: 3
-  path: "config/base/gather.yml"
 gather_tune-lr-0.001:
   overrides:
     training:
       lr: 0.001
   name: "tune_lr-0.001"
-  nruns: 3
+  nruns: 0
   path: "config/base/gather.yml"
 gather_tune-sigma-0.2:
   overrides:
     training:
       sigma: 0.2
   name: "tune_lr-0.2"
-  nruns: 3
-  path: "config/base/gather.yml"
-gather_tune-sigma-0.002:
-  overrides:
-    training:
-      sigma: 0.002
-  name: "tune_lr-0.002"
-  nruns: 3
+  nruns: 0
   path: "config/base/gather.yml"
 gather_tune-cdist-2:
   overrides:
     hrl:
       cdist: 2
   name: "tune_cdist-2"
-  nruns: 3
+  nruns: 0
+  path: "config/base/gather.yml"
+gather_tune-sigma-0.002:
+  overrides:
+    training:
+      sigma: 0.002
+  name: "tune_lr-0.002"
+  nruns: 0
+  path: "config/base/gather.yml"
+gather_tune-lr-0.1:
+  overrides:
+    training:
+      lr: 0.1
+  name: "tune_lr-0.1"
+  nruns: 0
   path: "config/base/gather.yml"
 gather_tune-cdist-8:
   overrides:
     hrl:
       cdist: 8
   name: "tune_cdist-8"
-  nruns: 3
+  nruns: 0
   path: "config/base/gather.yml"

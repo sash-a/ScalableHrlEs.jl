@@ -38,6 +38,7 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     if ScalableES.isroot(comm)
         tblg = ScalableES.TBLogger("tensorboard_logs/$(name)", min_level=ScalableES.Logging.Info)
     end
+    
     env = first(envs)
     obssize = length(ScalableES.obsspace(env))
 
