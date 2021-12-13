@@ -7,6 +7,7 @@ using HrlMuJoCoEnvs
 
 using Base.Threads
 using Flux
+using LinearAlgebra
 using Dates
 using Random
 
@@ -23,6 +24,8 @@ function run(conf, mjpath)
         mkdir(savedfolder)
     end
 
+    LinearAlgebra.BLAS.set_num_threads(1)
+
     mj_activate(mjpath)
     println("MuJoCo activated")
     println("n threads $(Threads.nthreads())")
@@ -31,7 +34,7 @@ function run(conf, mjpath)
     @show conf.env.kwargs
     envs = LyceumMuJoCo.tconstruct(HrlMuJoCoEnvs.make(conf.env.name), Threads.nthreads(); conf.env.kwargs...)
     env = first(envs)
-    # @show env
+
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
     coutsize = conf.hrl.onehot ? 8 : 2

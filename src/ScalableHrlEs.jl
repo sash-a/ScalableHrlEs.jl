@@ -21,6 +21,7 @@ using Distributed
 using BSON
 using YAML
 using Configurations
+using Dates
 
 include("Util.jl")
 include("Config.jl")
@@ -34,11 +35,10 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     @assert npolicies / ScalableES.nnodes(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(ScalableES.nnodes(comm)))"
 
     println("Running ScalableEs")
-    tblg = nothing
-    if ScalableES.isroot(comm)
-        tblg = ScalableES.TBLogger("tensorboard_logs/$(name)", min_level=ScalableES.Logging.Info)
-    end
+    tblg = ScalableES.isroot(comm) ? ScalableES.TBLogger("tensorboard_logs/$(name)", min_level=ScalableES.Logging.Info) : nothing
     
+    rngs = ScalableES.parallel_rngs(123, ScalableES.nprocs(comm), comm)
+
     env = first(envs)
     obssize = length(ScalableES.obsspace(env))
 
@@ -70,18 +70,21 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     opt = ScalableES.isroot(comm) ? HrlAdam(length(p.cπ.θ), length(p.pπ.θ), η) : nothing
 
     cforward = onehot ? onehot_forward : forward
-    f = (nns, e, obmean, obstd) -> hrl_run_env(nns, e, obmean, obstd, interval, steps, 
-                                                episodes, cdist; cforward=cforward, 
-                                                prim_specific_obs=prim_specific_obs)
+    f = (nns, e, rng, obmean, obstd) -> hrl_run_env(nns, e, rng, obmean, obstd, interval, steps, episodes, cdist; 
+                                                    cforward=cforward, prim_specific_obs=prim_specific_obs)
     eval_gather = env isa HrlMuJoCoEnvs.AbstractGatherEnv
     eval_maze   = env isa HrlMuJoCoEnvs.AbstractMazeEnv || 
                   env isa HrlMuJoCoEnvs.AbstractPushEnv || 
                   env isa HrlMuJoCoEnvs.AbstractFallEnv
-    evalfn = (nns, e, obmean, obstd) -> first(first(hrl_run_env(nns, e, obmean, obstd, interval, steps, 10, cdist; 
-                                                            cforward=cforward, rng=nothing, maze_eval=eval_maze,
-                                                            earlystop_eval=eval_gather, prim_specific_obs=prim_specific_obs)))
+    evalfn = (nns, e, rng, obmean, obstd) -> first(first(hrl_run_env(nns, e, rng, obmean, obstd, interval, steps, 10, cdist; 
+                                                        cforward=cforward, maze_eval=eval_maze, earlystop_eval=eval_gather, 
+                                                        prim_specific_obs=prim_specific_obs)))
+
+    # warmup
+    f(ScalableES.to_nn(p), first(envs), first(rngs), mean(obstat), std(obstat))
+
     println("Initialization done")
-    ScalableES.run_gens(gens, name, p, nt, f, evalfn, envs, npolicies, opt, obstat, tblg, comm)
+    ScalableES.run_gens(gens, name, p, nt, f, evalfn, envs, npolicies, opt, obstat, tblg, rngs, comm)
 
     if ScalableES.isroot(comm)
         model = ScalableES.to_nn(p)
@@ -93,25 +96,23 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     end
 end
 
-function ScalableES.noiseify(π::Policy, nt::NoiseTable, ind::Int)
-    noise = ScalableES.sample(nt, ind, length(π.θ))
-	Policy(π.θ .+ noise, π._re), Policy(π.θ .- noise, π._re), ind
-end
+@views function ScalableES.noiseify(π::HrlPolicy, nt::ScalableES.NoiseTable, rng)
+    cind = rand(rng, nt, length(π.cπ.θ))
+    pind = rand(rng, nt, length(π.pπ.θ))
+    cpos_pol, cneg_pol, _ = ScalableES.noiseify(π.cπ, nt, cind)
+    ppos_pol, pneg_pol, _ = ScalableES.noiseify(π.pπ, nt, pind)
 
-function ScalableES.noiseify(π::HrlPolicy, nt::ScalableES.NoiseTable)
-    ind = rand(nt, max(length(π.cπ.θ), length(π.pπ.θ)))
-    cpos_pol, cneg_pol, _ = ScalableES.noiseify(π.cπ, nt, ind)
-    ppos_pol, pneg_pol, _ = ScalableES.noiseify(π.pπ, nt, ind)
-
-    HrlPolicy(cpos_pol, ppos_pol), HrlPolicy(cneg_pol, pneg_pol), ind
+    HrlPolicy(cpos_pol, ppos_pol), HrlPolicy(cneg_pol, pneg_pol), (cind, pind)
 end
 
 function ScalableES.optimize!(π::HrlPolicy, ranked::Vector{HrlEsResult{T}}, nt::NoiseTable, optim::HrlAdam, l2coeff::Float32) where T <: AbstractFloat
-    ScalableES.optimize!(π.cπ, map(r->r.cres, ranked), nt, optim.copt, l2coeff), ScalableES.optimize!(π.pπ, map(r->r.pres, ranked), nt, optim.popt, l2coeff)
+    cres = map(r->r.cres, ranked)
+    pres = map(r->r.pres, ranked)
+    ScalableES.optimize!(π.cπ, cres, nt, optim.copt, l2coeff), ScalableES.optimize!(π.pπ, pres, nt, optim.popt, l2coeff)
 end
 
-ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)
-ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::ScalableES.ThreadComm) = SharedVector{HrlEsResult{Float64}}(n)
+# ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)
+ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::ScalableES.AbstractComm) = Vector{HrlEsResult{Float64}}(undef, n) # SharedVector{HrlEsResult{Float64}}(n)
 # ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape + 3, 0f0)
 
 function ScalableES.make_obstat(shape, pol::HrlPolicy)
@@ -129,10 +130,9 @@ function encode_prim_obs(obs::Vector{T}, env, targ_vec, targ_dist) where T <: Ab
     vcat(angle_encode_target(targ_vec, LyceumMuJoCo._torso_ang(env)), [targ_dist], obs)
 end
 
-function hrl_run_env(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), 
+function hrl_run_env(nns::Tuple{Chain, Chain}, env, rng, (cobmean, pobmean), (cobstd, pobstd), 
                     cintervals::Int, steps::Int, episodes::Int, cdist::Float32; 
-                    cforward=onehot_forward, prim_specific_obs=false,
-                    rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)    
+                    cforward=onehot_forward, prim_specific_obs=false, earlystop_eval=false, maze_eval=false)    
     cobs = Vector{Vector{Float64}}()
     pobs = Vector{Vector{Float64}}()
 
@@ -141,8 +141,8 @@ function hrl_run_env(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd,
 	step = 0
 
 	for ep in 1:episodes
-        (ep_cr, ep_pr), ep_step, (ep_cobs, ep_pobs) = _one_episode(nns, env, (cobmean, pobmean), (cobstd, pobstd), 
-                    cintervals, steps, episodes, cdist; rng = rng, cforward=cforward, 
+        (ep_cr, ep_pr), ep_step, (ep_cobs, ep_pobs) = _one_episode(nns, env, rng, (cobmean, pobmean), (cobstd, pobstd), 
+                    cintervals, steps, episodes, cdist; cforward=cforward, 
                     prim_specific_obs=prim_specific_obs, earlystop_eval=earlystop_eval, maze_eval=maze_eval)
         cr += ep_cr
         pr += ep_pr
@@ -154,10 +154,9 @@ function hrl_run_env(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd,
 	(cr / episodes, pr / episodes), step, (cobs, pobs)
 end
 
-function _one_episode(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd, pobstd), 
+function _one_episode(nns::Tuple{Chain, Chain}, env, rng, (cobmean, pobmean), (cobstd, pobstd), 
                       cintervals::Int, steps::Int, episodes::Int, cdist::Float32; 
-                      cforward=onehot_forward, prim_specific_obs=false,
-                      rng=Random.GLOBAL_RNG, earlystop_eval=false, maze_eval=false)
+                      cforward=onehot_forward, prim_specific_obs=false, earlystop_eval=false, maze_eval=false)
     
     cnn, pnn = nns
 
@@ -184,18 +183,25 @@ function _one_episode(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
 
     LyceumMuJoCo.reset!(env)
     for i in 0:steps - 1
+        t = now()
         ob = LyceumMuJoCo.getobs(env)
+        # println("get ob time: $(now() - t)")
 
         if i % cintervals == 0  # step the controller
-            c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins; rng=rng)
+            t = now()
+            c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins, rng)
+            # println("ctrl forward: $(now() - t)")
+
             rel_target = outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
             # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
             abs_target = rel_target + pos
             push!(cobs, ob)
 
             targ_start_dist = d_old = HrlMuJoCoEnvs.euclidean(abs_target, pos)
+            # println("ctrl whole time: $(now() - t)")
         end
 
+        t = now()
         rel_target = abs_target - pos  # update rel_target each time
 
         pob = ob
@@ -203,10 +209,19 @@ function _one_episode(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
             pob = ob[robot_obs_range(env)]
         end
         pob = encode_prim_obs(pob, env, rel_target, d_old / 1000)
-        act = ScalableES.forward(pnn, pob, pobmean, pobstd; rng=rng)
-        LyceumMuJoCo.setaction!(env, act)
-        LyceumMuJoCo.step!(env)
+        # println("encode prim obs: $(now() - t)")
 
+        t = now()
+        act = ScalableES.forward(pnn, pob, pobmean, pobstd, rng)
+        # println("prim forward: $(now() - t)")
+        t = now()
+        LyceumMuJoCo.setaction!(env, act)
+        # println("set action: $(now() - t)")
+        t = now()
+        LyceumMuJoCo.step!(env)
+        # println("step env: $(now() - t)")
+
+        t = now()
         step += 1
         push!(pobs, pob)  # propogate ob recording to here, don't have to alloc mem if not using obs
         
@@ -226,6 +241,7 @@ function _one_episode(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
         if LyceumMuJoCo.isdone(env)
             break
         end
+        # println("end of loop: $(now() - t)")
     end
 
     if earlystop_eval
@@ -238,9 +254,9 @@ function _one_episode(nns::Tuple{Chain, Chain}, env, (cobmean, pobmean), (cobstd
 end
 
 # so that it matches the signature of onehot_forward
-forward(nn, x, obmean, obstd, cdist, y, s, n; rng=Random.GLOBAL_RNG) = ScalableES.forward(nn, x, obmean, obstd; rng=rng) * cdist
-function onehot_forward(nn, x, obmean, obstd, max_dist, yaw, sensor_span, nbins; rng=Random.GLOBAL_RNG)
-    out = ScalableES.forward(nn, x, obmean, obstd; rng=rng)
+forward(nn, x, obmean, obstd, cdist, y, s, n, rng) = ScalableES.forward(nn, x, obmean, obstd, rng) * cdist
+function onehot_forward(nn, x, obmean, obstd, max_dist, yaw, sensor_span, nbins, rng)
+    out = ScalableES.forward(nn, x, obmean, obstd, rng)
 
     bin_idx = argmax(out)
     dist_percent = out[bin_idx]

@@ -99,5 +99,9 @@ function parseargs()
     parse_args(s)
 end
 
-args = parseargs()
-run(ScalableHrlEs.loadconfig(args["cfgpath"]), args["mjpath"])
+function main()
+    args = parseargs()
+    run(ScalableHrlEs.loadconfig(args["cfgpath"]), args["mjpath"])
+end
+
+main()
