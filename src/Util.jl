@@ -14,7 +14,7 @@ function ScalableES.rank(results::AbstractVector{HrlEsResult{T}}) where T
     cres = map(r->r.cres, results)
     cranked_fits = ScalableES.rank(map(r->r.fit, cres))
     cranked = map((r,f)->ScalableES.EsResult(f, r.ind, r.steps), cres, cranked_fits)
-	map(((p1,p2,n1,n2),) ->  # controller returns positives, positive, negative, negative...
+	cranked = map(((p1,p2,n1,n2),) ->  # controller returns positives, positive, negative, negative...
         ScalableES.EsResult(p1.fit + p2.fit - n1.fit - n2.fit, p1.ind, p1.steps + p2.steps + n1.steps + n2.steps), 
         ScalableES.partition(cranked, 4)
     )
@@ -22,10 +22,10 @@ function ScalableES.rank(results::AbstractVector{HrlEsResult{T}}) where T
     pres = map(r->r.pres, results)
     pranked_fits = ScalableES.rank(map(r->r.fit, pres))
     pranked = map((r,f)->ScalableES.EsResult(f, r.ind, r.steps), pres, pranked_fits)
-	map(((p1,n1,p2,n2),) ->  # primitive returns positive, negative, positive, negative..
+	pranked = map(((p1,n1,p2,n2),) ->  # primitive returns positive, negative, positive, negative...
         ScalableES.EsResult(p1.fit + p2.fit - n1.fit - n2.fit, p1.ind, p1.steps + p2.steps + n1.steps + n2.steps), 
         ScalableES.partition(pranked, 4)
-    ) 
+    )
 
     map((c, p) -> HrlEsResult(c, p), cranked, pranked)  # pack results back into HRL result
 end
