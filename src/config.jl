@@ -43,6 +43,7 @@ end
 end
 
 function loadconfig(cfg_dict::Dict)
+    @show cfg_dict
     # explicit conversion from string to symbol because for some reason overiding Base.convert doesn't work
     if haskey(cfg_dict["env"], "kwargs")
         cfg_dict["env"]["kwargs"] = Dict{Symbol,Any}(Symbol(k) => v for (k, v) in pairs(cfg_dict["env"]["kwargs"]))

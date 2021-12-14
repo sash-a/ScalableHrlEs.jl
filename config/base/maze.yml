@@ -1,4 +1,4 @@
-name: AntMaze-mpitest
+name: AntMaze
 env:
   name: AntMaze
   steps: 500  # max steps for env

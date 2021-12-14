@@ -34,7 +34,7 @@ function getconfig(batchfilepath)
         cfg_dict = YAML.load_file(cfgpath; dicttype=Dict{String, Any})
         merged_dict = recursive_merge(cfg_dict, overrides)
         conf = ScalableHrlEs.loadconfig(merged_dict)
-        conf = ScalableHrlEs.SHrlEsConfig("$(conf.name)_$(name)_$nrun", conf.env, conf.training, conf.hrl)
+        conf = ScalableHrlEs.SHrlEsConfig("$(conf.name)_$(name)_$nrun", conf.seed, conf.env, conf.training, conf.hrl)
         conf
     else
         nothing
@@ -53,8 +53,7 @@ function batchrun()
     @show conf
     @assert conf !== nothing
 
-    run(conf, args["mjpath"])
-
+    run(conf, args["mjpath"], args["mpi"])
 end
 
 batchrun()
