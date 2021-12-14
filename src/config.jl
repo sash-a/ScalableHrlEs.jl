@@ -7,11 +7,10 @@ function Base.convert(::Type{Symbol}, s::String)
     s
 end
 
-
 @option struct Env
     name::String
     steps::Int
-    kwargs::Dict{Symbol, Any} = Dict{Symbol, Any}()
+    kwargs::Dict{Symbol,Any} = Dict{Symbol,Any}()
 end
 
 @option struct Training
@@ -45,12 +44,12 @@ end
 function loadconfig(cfg_dict::Dict)
     # explicit conversion from string to symbol because for some reason overiding Base.convert doesn't work
     if haskey(cfg_dict["env"], "kwargs")
-        cfg_dict["env"]["kwargs"] = Dict{Symbol, Any}(Symbol(k) => v for (k, v) in pairs(cfg_dict["env"]["kwargs"]))
+        cfg_dict["env"]["kwargs"] = Dict{Symbol,Any}(Symbol(k) => v for (k, v) in pairs(cfg_dict["env"]["kwargs"]))
     end
     from_dict(SHrlEsConfig, cfg_dict)
 end
 
 function loadconfig(file::String)
-    cfg_dict = YAML.load_file(file; dicttype=Dict{String, Any})
+    cfg_dict = YAML.load_file(file; dicttype = Dict{String,Any})
     loadconfig(cfg_dict)
 end
