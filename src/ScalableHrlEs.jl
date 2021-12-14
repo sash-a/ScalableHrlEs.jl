@@ -43,7 +43,7 @@ function run_hrles(name::String, cnn, pnn, envs, comm::Union{Comm, ScalableES.Th
     obssize = length(ScalableES.obsspace(env))
 
     println("Creating policy")
-    p = HrlPolicy(cnn, pnn, comm)
+    p = HrlPolicy(cnn, pnn)
     ScalableES.bcast_policy!(p, comm)
 
     println("Creating noise table")
@@ -111,12 +111,11 @@ function ScalableES.optimize!(π::HrlPolicy, ranked::Vector{HrlEsResult{T}}, nt:
     ScalableES.optimize!(π.cπ, cres, nt, optim.copt, l2coeff), ScalableES.optimize!(π.pπ, pres, nt, optim.popt, l2coeff)
 end
 
-# ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::Comm) = Vector{HrlEsResult{Float64}}(undef, n)
-ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::ScalableES.AbstractComm) = Vector{HrlEsResult{Float64}}(undef, n) # SharedVector{HrlEsResult{Float64}}(n)
-# ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape + 3, 0f0)
+ScalableES.make_result_vec(n::Int, ::HrlPolicy, ::ScalableES.AbstractComm) = Vector{HrlEsResult{Float64}}(undef, n)
 
+# ScalableES.make_obstat(shape, ::HrlPolicy) = HrlObstat(shape, shape + 3, 0f0)
 function ScalableES.make_obstat(shape, pol::HrlPolicy)
-    (cnn, pnn) = ScalableES.to_nn(pol)
+    (cnn, pnn) = ScalableES.to_nn(pol)  # this is kinda expensive, but only called once per generation
     HrlObstat(shape, last(size(first(pnn.layers).W)), 0f0)
 end
 

@@ -14,7 +14,7 @@ function run_hrl_nses(name::String, cnns, pnn, envs, comm::Union{Comm,ScalableES
     obssize = length(ScalableES.obsspace(env))
 
     println("Creating policy")
-    ps = [HrlPolicy(cnn, pnn, comm) for cnn in cnns]
+    ps = [HrlPolicy(cnn, pnn) for cnn in cnns]
     for p in ps
         ScalableES.bcast_policy!(p, comm)  # untested for mpi
     end

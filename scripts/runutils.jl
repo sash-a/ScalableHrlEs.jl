@@ -78,7 +78,6 @@ function make_nns(cobssize, pobssize, coutsize, actsize)
             x -> x .* 30)  # because ant has a joint range from -30, 30
 
     pobstat = ScalableES.Obstat(pobssize, 1f-2)
-    
 
     (cnn, pnn), ScalableHrlEs.HrlObstat(cobstat, pobstat)
 end
