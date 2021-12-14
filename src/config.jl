@@ -36,6 +36,7 @@ end
 
 @option struct SHrlEsConfig
     name::String
+    seed::Int = 123
     env::Env
     training::Training
     hrl::Hrl

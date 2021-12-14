@@ -2,18 +2,19 @@ module ScalableHrlEs
 # Author Sasha Abramowitz
 # prefixing variables with 'p' or 'c' refers to the primitive or controller version of that variable
 
-using HrlMuJoCoEnvs
-
 import ScalableES
 using ScalableES: NoiseTable, LyceumMuJoCo, Policy
 
+using HrlMuJoCoEnvs
+
 using MPI: MPI, Comm
+using ThreadPools
+
 using Flux
 import StatsBase
 import Statistics: mean, std
 using Distributions
 using Random
-using SharedArrays
 
 using StaticArrays
 using BSON
@@ -48,6 +49,7 @@ function run_hrles(
     prim_pretrained_path = "",
     onehot = false,
     prim_specific_obs = false,
+    seed = 123
 )
     @assert npolicies / ScalableES.nnodes(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(ScalableES.nnodes(comm)))"
 
@@ -58,7 +60,7 @@ function run_hrles(
         nothing
     end
 
-    rngs = ScalableES.parallel_rngs(123, ScalableES.nprocs(comm), comm)
+    rngs = ScalableES.parallel_rngs(seed, ScalableES.nprocs(comm), comm)
 
     env = first(envs)
     obssize = length(ScalableES.obsspace(env))
@@ -68,7 +70,7 @@ function run_hrles(
     ScalableES.bcast_policy!(p, comm)
 
     println("Creating noise table")
-    nt, win = NoiseTable(nt_size, length(p.cπ.θ), σ, comm)
+    nt, win = NoiseTable(nt_size, length(p.cπ.θ), σ, comm; seed=seed)
 
     obstat = obstat === nothing ? HrlObstat(obssize, obssize + 3, 1.0f-2) : obstat
 
@@ -159,7 +161,7 @@ Runs the evaluate loop for SHES: perturb, run env, store results
 function ScalableES.evaluate(pol::HrlPolicy, nt, f, envs, n::Int, results, obstat, rngs, comm::ScalableES.AbstractComm)
     l = ReentrantLock()
 
-    Threads.@threads for i = 1:(n÷2)
+    @qthreads for i = 1:(n÷2)
         tid = Threads.threadid()
         env = envs[tid]
         rng = rngs[tid]
