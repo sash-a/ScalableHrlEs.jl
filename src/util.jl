@@ -1,5 +1,3 @@
-
-
 """
 Makes sure v is outside of the range (lower, upper) 
 by rounding it to the nearest value outside the range

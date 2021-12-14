@@ -19,7 +19,6 @@ using StaticArrays
 using BSON
 using YAML
 using Configurations
-using Dates
 
 include("policy.jl")
 include("util.jl")
@@ -53,9 +52,11 @@ function run_hrles(
     @assert npolicies / ScalableES.nnodes(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(ScalableES.nnodes(comm)))"
 
     println("Running ScalableEs")
-    tblg =
-        ScalableES.isroot(comm) ? ScalableES.TBLogger("tensorboard_logs/$(name)", min_level = ScalableES.Logging.Info) :
+    tblg = if ScalableES.isroot(comm)
+        ScalableES.TBLogger("tensorboard_logs/$(name)", min_level = ScalableES.Logging.Info)
+    else
         nothing
+    end
 
     rngs = ScalableES.parallel_rngs(123, ScalableES.nprocs(comm), comm)
 
@@ -146,13 +147,59 @@ function run_hrles(
     end
 end
 
+"""
+Runs the evaluate loop for SHES: perturb, run env, store results
+
+    Each policy is perturbed four times and results are stored as follows:
+    controller: [pos perturb, pos perturb, neg perturb, neg perturb, ...]
+    primitive: [pos perturb, neg perturb, pos perturb, neg perturb, ...]
+
+    `results` and `obstat` are empty containers of the correct type
+"""
+function ScalableES.evaluate(pol::HrlPolicy, nt, f, envs, n::Int, results, obstat, rngs, comm::ScalableES.AbstractComm)
+    l = ReentrantLock()
+
+    Threads.@threads for i = 1:(n÷2)
+        tid = Threads.threadid()
+        env = envs[tid]
+        rng = rngs[tid]
+
+        ppπ, pnπ, nnπ, npπ, noise_ind = ScalableES.noiseify(pol, nt, rng)
+
+        ppfit, ppsteps, ppobs = f(ScalableES.to_nn(ppπ), env, rng)
+        nnfit, nnsteps, nnobs = f(ScalableES.to_nn(nnπ), env, rng)
+        npfit, npsteps, npobs = f(ScalableES.to_nn(npπ), env, rng)
+        pnfit, pnsteps, pnobs = f(ScalableES.to_nn(pnπ), env, rng)
+
+
+        if rand() < 0.01
+            Base.@lock l begin
+                obstat = ScalableES.add_obs(obstat, ppobs)
+                obstat = ScalableES.add_obs(obstat, nnobs)
+                obstat = ScalableES.add_obs(obstat, pnobs)
+                obstat = ScalableES.add_obs(obstat, npobs)
+            end
+        end
+        results[i*4-3] = ScalableES.make_result(ppfit, noise_ind, ppsteps)
+        results[i*4-2] = ScalableES.make_result(pnfit, noise_ind, pnsteps)
+        results[i*4-1] = ScalableES.make_result(npfit, noise_ind, npsteps)
+        results[i*4-0] = ScalableES.make_result(nnfit, noise_ind, nnsteps)
+    end
+
+    results, obstat
+end
+
 @views function ScalableES.noiseify(π::HrlPolicy, nt::ScalableES.NoiseTable, rng)
     cind = rand(rng, nt, length(π.cπ.θ))
     pind = rand(rng, nt, length(π.pπ.θ))
     cpos_pol, cneg_pol, _ = ScalableES.noiseify(π.cπ, nt, cind)
     ppos_pol, pneg_pol, _ = ScalableES.noiseify(π.pπ, nt, pind)
 
-    HrlPolicy(cpos_pol, ppos_pol), HrlPolicy(cneg_pol, pneg_pol), (cind, pind)
+    HrlPolicy(cpos_pol, ppos_pol),
+    HrlPolicy(cpos_pol, pneg_pol),
+    HrlPolicy(cneg_pol, pneg_pol),
+    HrlPolicy(cneg_pol, ppos_pol),
+    (cind, pind)
 end
 
 include("novelty/ScalableHrlNsEs.jl")  # todo move to its own package
