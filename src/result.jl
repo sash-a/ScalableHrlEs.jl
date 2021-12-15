@@ -13,6 +13,8 @@ end
 ScalableES.make_result_vec(n::Int64, ::HrlPolicy{Float32}, ::ScalableES.AbstractComm) =
     Vector{HrlEsResult{Float64}}(undef, n)
 
+ScalableES.validresult(r::HrlEsResult) = r.pres.steps > 0
+
 function ScalableES.rank(results::AbstractVector{HrlEsResult{T}}) where {T}
     # need to rank separately because positive and negative perturbs are stored in different order for ctrl and prim
     # ranking controller

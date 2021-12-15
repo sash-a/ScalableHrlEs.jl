@@ -158,13 +158,22 @@ Runs the evaluate loop for SHES: perturb, run env, store results
 
     `results` and `obstat` are empty containers of the correct type
 """
-function ScalableES.evaluate(pol::HrlPolicy, nt, f, envs, n::Int, results, obstat, rngs, comm::ScalableES.AbstractComm)
+function ScalableES.evaluate(pol::HrlPolicy, nt, f, envs, n::Int, results, obstat, earlystop, rngs, comm::ScalableES.AbstractComm)
     l = ReentrantLock()
 
     @qthreads for i = 1:(n÷2)
+        @inbounds if first(earlystop)  # one of the nodes has completed all evals
+            # fill evals with dummy data that will be filtered out later (easier than gatherv)
+            results[i*4-3] = ScalableES.make_result((-1.,-1.), (-1,1), -1)
+            results[i*4-2] = ScalableES.make_result((-1.,-1.), (-1,1), -1)
+            results[i*4-1] = ScalableES.make_result((-1.,-1.), (-1,1), -1)
+            results[i*4-0] = ScalableES.make_result((-1.,-1.), (-1,1), -1)
+            continue 
+        end
+
         tid = Threads.threadid()
-        env = envs[tid]
-        rng = rngs[tid]
+        @inbounds env = envs[tid]
+        @inbounds rng = rngs[tid]
 
         ppπ, pnπ, nnπ, npπ, noise_ind = ScalableES.noiseify(pol, nt, rng)
 
@@ -182,10 +191,11 @@ function ScalableES.evaluate(pol::HrlPolicy, nt, f, envs, n::Int, results, obsta
                 obstat = ScalableES.add_obs(obstat, npobs)
             end
         end
-        results[i*4-3] = ScalableES.make_result(ppfit, noise_ind, ppsteps)
-        results[i*4-2] = ScalableES.make_result(pnfit, noise_ind, pnsteps)
-        results[i*4-1] = ScalableES.make_result(npfit, noise_ind, npsteps)
-        results[i*4-0] = ScalableES.make_result(nnfit, noise_ind, nnsteps)
+        
+        @inbounds results[i*4-3] = ScalableES.make_result(ppfit, noise_ind, ppsteps)
+        @inbounds results[i*4-2] = ScalableES.make_result(pnfit, noise_ind, pnsteps)
+        @inbounds results[i*4-1] = ScalableES.make_result(npfit, noise_ind, npsteps)
+        @inbounds results[i*4-0] = ScalableES.make_result(nnfit, noise_ind, nnsteps)
     end
 
     results, obstat
