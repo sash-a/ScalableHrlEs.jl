@@ -43,13 +43,27 @@ end
 
 function batchrun()
     args = parseargs()
+
+    comm = if args["mpi"]
+        MPI.Init()
+        MPI.COMM_WORLD  # expecting this to be one per node
+    else
+        ScalableES.ThreadComm()
+    end
+
     batchfilepath = args["cfgpath"]
     
     batchfilepath = "config/batch.yml"
 
-    conf = mkpidlock("ses-batchfile-lock") do
-        @show getconfig(batchfilepath)
+    conf = nothing
+    if ScalableES.isroot(comm)
+        conf = mkpidlock("ses-batchfile-lock") do
+            @show getconfig(batchfilepath)
+        end
     end
+    
+    conf = MPI.bcast(conf, ScalableES.MPIROOT, comm)
+
     @show conf
     @assert conf !== nothing
 

@@ -1,10 +1,11 @@
 name: AntGather
+seed: 123
 env:
   name: AntGather
   steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy
-  policies: 256  # policies in one generation
+  policies: 240  # policies in one generation
   generations: 3000
   lr: 0.01
   sigma: 0.02
