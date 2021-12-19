@@ -62,12 +62,14 @@ function batchrun()
         end
     end
     
-    conf = MPI.bcast(conf, ScalableES.MPIROOT, comm)
-
+    if ScalableES.ismpi(comm)
+        conf = MPI.bcast(conf, ScalableES.MPIROOT, comm)
+    end
+    
     @show conf
     @assert conf !== nothing
 
-    run(conf, args["mjpath"], args["mpi"])
+    run(conf, args["mjpath"], comm)
 end
 
 batchrun()

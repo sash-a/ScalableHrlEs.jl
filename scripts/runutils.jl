@@ -16,15 +16,7 @@ using Random
 using ArgParse
 using BSON
 
-function run(conf, mjpath, mpi)
-    @show mpi
-    comm = if mpi
-        MPI.Init()
-        MPI.COMM_WORLD  # expecting this to be one per node
-    else
-        ScalableES.ThreadComm()
-    end
-
+function run(conf, mjpath, comm::ScalableES.AbstractComm)
     t = now()
 
     println("Run name: $(conf.name)")
@@ -73,6 +65,18 @@ function run(conf, mjpath, mpi)
         seed = conf.seed,
     )
     println("DONE: Total time: $(now() - t)")
+end
+
+function run(conf, mjpath, mpi::Bool)
+    @show mpi
+    comm = if mpi
+        MPI.Init()
+        MPI.COMM_WORLD  # expecting this to be one per node
+    else
+        ScalableES.ThreadComm()
+    end
+
+    run(conf, mjpath, comm)
 end
 
 function make_nns(cobssize, pobssize, coutsize, actsize)
