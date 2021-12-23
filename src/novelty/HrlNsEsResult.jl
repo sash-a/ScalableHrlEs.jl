@@ -13,7 +13,7 @@ end
 
 function ScalableES.make_result_vec(n::Int, ::HrlPolicy, rollouts::Int, steps::Int, interval::Int, ::ScalableES.ThreadComm)
     npoints = interval < 0 ? 1 : steps ÷ interval
-    SharedVector{HrlNsEsResult{Float64,rollouts,npoints}}(n)
+    Vector{HrlNsEsResult{Float64,rollouts,npoints}}(n)
 end
 
 function ScalableES.rank(rs::AbstractVector{T}, w) where T <: HrlNsEsResult

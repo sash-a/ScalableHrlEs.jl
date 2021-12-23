@@ -7,3 +7,4 @@ scripts/viz.jl
 
 saved/*
 !saved/.gitkeep
+saes.code-workspace

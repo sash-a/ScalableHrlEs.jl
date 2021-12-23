@@ -16,7 +16,7 @@ function run_hrl_nses(name::String, cnns, pnn, envs, comm::Union{Comm,ScalableES
     println("Creating policy")
     ps = [HrlPolicy(cnn, pnn) for cnn in cnns]
     for p in ps
-        ScalableES.bcast_policy!(p, comm)  # untested for mpi
+        ScalableES.bcast_policy!(p, comm)
     end
 
     println("Creating noise table")

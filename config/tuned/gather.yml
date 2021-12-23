@@ -1,15 +1,14 @@
-name: AntPush-ns-endposbehv
+name: AntGather
+seed: 123
 env:
-  name: AntPush
+  name: AntGather
   steps: 500  # max steps for env
 training:
   episodes: 5  # episodes per policy
   policies: 1000  # policies in one generation
   generations: 3000
-
-  pop_size: 3  # number of distinct 'main' policies (for novelty search)
-  behv_freq: -1
-  min_nov_w: 0.5
+  lr: 0.01
+  sigma: 0.02
 hrl:
   interval: 25
   cdist: 4

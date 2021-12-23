@@ -1,4 +1,6 @@
 include("../src/ScalableHrlEs.jl")
+include("runutils.jl")
+
 using .ScalableHrlEs: ScalableHrlEs, ScalableES
 
 using MuJoCo
@@ -7,20 +9,30 @@ using HrlMuJoCoEnvs
 
 using Base.Threads
 using Flux
+using LinearAlgebra
 using Dates
 using Random
 using ArgParse
 using BSON
 using StaticArrays
-using SharedArrays
-using Distributed
 
-function run(conf, mjpath)
+function run(conf, mjpath, mpi)
+    @show mpi
+    comm = if mpi
+        MPI.Init()
+        MPI.COMM_WORLD  # expecting this to be one per node
+    else
+        ScalableES.ThreadComm()
+    end
+
     println("Run name: $(conf.name)")
     savedfolder = joinpath(@__DIR__, "..", "saved", conf.name)
     if !isdir(savedfolder)
         mkdir(savedfolder)
     end
+
+    # otherwise BLAS competes with SHES for threads
+    LinearAlgebra.BLAS.set_num_threads(1)
 
     mj_activate(mjpath)
     println("MuJoCo activated")
@@ -41,7 +53,7 @@ function run(conf, mjpath)
     (cnn, pnn), obstat = make_nns(obssize, pobsize, coutsize, actsize, conf.training.pop_size)
     println("nns created")
 
-    ScalableHrlEs.run_hrl_nses(conf.name, cnn, pnn, envs, ScalableES.ThreadComm();
+    ScalableHrlEs.run_hrl_nses(conf.name, cnn, pnn, envs, comm;
                                 obstat=obstat,
                                 gens=conf.training.generations, 
                                 interval=conf.hrl.interval, 
@@ -78,19 +90,9 @@ function make_nns(cobssize, pobssize, coutsize, actsize, pop_size)
     (cnns, pnn), ScalableHrlEs.HrlObstat(cobstat, pobstat)
 end
 
-function parseargs()
-    s = ArgParseSettings()
-    @add_arg_table s begin
-        "cfgpath"
-            required = true
-            help = "path/to/cfg.yml"
-        "--mjpath"
-            required = false
-            default = "~/.mujoco/mjkey.txt"
-            help = "path/to/mujoco/mjkey.txt"
-    end
-    parse_args(s)
+function main()
+    args = parseargs()
+    run(ScalableHrlEs.loadconfig(args["cfgpath"]), args["mjpath"], args["mpi"])
 end
 
-args = parseargs()
-run(ScalableHrlEs.loadconfig(args["cfgpath"]), args["mjpath"])
+main()
