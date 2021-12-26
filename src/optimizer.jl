@@ -5,8 +5,6 @@ mutable struct HrlAdam <: ScalableES.AbstractOptim
     HrlAdam(cdim::Int, pdim::Int, lr::Real) = new(ScalableES.Adam(cdim, lr), ScalableES.Adam(pdim, lr))
 end
 
-optimize(opt::HrlAdam, grad::Vector) = ScalableES.optimize(opt.copt), ScalableES.optimize(opt.popt)
-
 function ScalableES.optimize!(
     π::HrlPolicy,
     ranked::Vector{HrlEsResult{T}},
@@ -19,6 +17,6 @@ function ScalableES.optimize!(
     cgrad = l2coeff * π.cπ.θ - ScalableES.approxgrad(π.cπ, nt, map(r -> r.cres, ranked)) ./ (length(ranked) * 4)
     π.cπ.θ .+= ScalableES.optimize(optim.copt, cgrad)
 
-    pgrad = l2coeff * π.pπ.θ - ScalableES.approxgrad(π.pπ, nt, map(r -> r.pres, ranked)) ./ (length(ranked) * 4)
-    π.pπ.θ .+= ScalableES.optimize(optim.popt, pgrad)
+    # pgrad = l2coeff * π.pπ.θ - ScalableES.approxgrad(π.pπ, nt, map(r -> r.pres, ranked)) ./ (length(ranked) * 4)
+    # π.pπ.θ .+= ScalableES.optimize(optim.popt, pgrad)
 end

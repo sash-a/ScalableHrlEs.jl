@@ -76,11 +76,10 @@ function run_hrles(
 
     if !isempty(prim_pretrained_path)
         loaded = BSON.load(prim_pretrained_path, @__MODULE__)
-        # pnn = ScalableES.to_nn(loaded[:p].pπ)
         p.pπ.θ = loaded[:p].θ
-        @show length(p.pπ.θ)
         obstat = HrlObstat(obstat.cobstat, loaded[:obstat])
-        # obstat.pobstat = loaded[:obstat]
+
+        println("Loaded pretrianed primitive ($prim_pretrained_path)")
     end
 
     # if !isempty(ctrl_pretrained_path)
@@ -195,12 +194,12 @@ end
     cind = rand(rng, nt, length(π.cπ.θ))
     pind = rand(rng, nt, length(π.pπ.θ))
     cpos_pol, cneg_pol, _ = ScalableES.noiseify(π.cπ, nt, cind)
-    ppos_pol, pneg_pol, _ = ScalableES.noiseify(π.pπ, nt, pind)
+    # ppos_pol, pneg_pol, _ = ScalableES.noiseify(π.pπ, nt, pind)
 
-    HrlPolicy(cpos_pol, ppos_pol),
-    HrlPolicy(cpos_pol, pneg_pol),
-    HrlPolicy(cneg_pol, pneg_pol),
-    HrlPolicy(cneg_pol, ppos_pol),
+    HrlPolicy(cpos_pol, π.pπ),
+    HrlPolicy(cpos_pol, π.pπ),
+    HrlPolicy(cneg_pol, π.pπ),
+    HrlPolicy(cneg_pol, π.pπ),
     (cind, pind)
 end
 
