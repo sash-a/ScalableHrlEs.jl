@@ -51,7 +51,7 @@ function run_hrles(
     prim_specific_obs = false,
     seed = 123
 )
-    @assert npolicies / ScalableES.nnodes(comm) % 2 == 0 "Num policies / num nodes must be even (eps:$npolicies, nprocs:$(ScalableES.nnodes(comm)))"
+    validateparams(npolicies, comm)
 
     println("Running ScalableEs")
     tblg = if ScalableES.isroot(comm)
@@ -118,7 +118,7 @@ function run_hrles(
                 hrl_run_env(
                     nns,
                     e,
-                    rng,
+                    nothing,
                     obmean,
                     obstd,
                     interval,
@@ -161,7 +161,7 @@ Runs the evaluate loop for SHES: perturb, run env, store results
 function ScalableES.evaluate(pol::HrlPolicy, nt, f, envs, n::Int, results, obstat, rngs, comm::ScalableES.AbstractComm)
     l = ReentrantLock()
 
-    @qthreads for i = 1:(n÷2)
+    @qthreads for i = 1:(n÷4)  # ÷ 4 because doing 4 way antithetic sampling to reduce variance
         tid = Threads.threadid()
         env = envs[tid]
         rng = rngs[tid]
@@ -202,6 +202,13 @@ end
     HrlPolicy(cneg_pol, pneg_pol),
     HrlPolicy(cneg_pol, ppos_pol),
     (cind, pind)
+end
+
+function validateparams(pols::Int, comm::ScalableES.AbstractComm)
+    nodes = ScalableES.nnodes(comm)
+    ppn = pols / nodes
+    @assert pols % nodes == 0 "Each node must get the same number of policies. There are $pols policies and $nodes nodes."
+    @assert ppn % 4 == 0 "Policies per node must be divisible by four to perform antithetic sampling. Policies per node = $ppn."
 end
 
 include("novelty/ScalableHrlNsEs.jl")  # todo move to its own package

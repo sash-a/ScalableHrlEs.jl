@@ -73,7 +73,7 @@ function _one_episode(
     targ_start_dist = 0  # dist from target when controller suggests position
     d_old = 0.0f0
 
-    sqrthalf = sqrt(1 / 2)
+    sqrthalf = Float32(sqrt(1 / 2))
 
     pos = zeros(2)
     rel_target = zeros(2)
