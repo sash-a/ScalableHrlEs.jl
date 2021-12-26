@@ -1,24 +1,31 @@
-include("../src/ScalableHrlEs.jl")
-using .ScalableHrlEs: ScalableHrlEs, ScalableES
+include("runutils.jl")
 
 using MuJoCo
 using LyceumMuJoCo
 using HrlMuJoCoEnvs
 
-using MPI
 using Base.Threads
-
 using Flux
 using LinearAlgebra
-
 using Dates
 using Random
 using ArgParse
 using BSON
+using StaticArrays
+
+function run(conf, mjpath, mpi::Bool)
+    @show mpi
+    comm = if mpi
+        MPI.Init()
+        MPI.COMM_WORLD  # expecting this to be one per node
+    else
+        ScalableES.ThreadComm()
+    end
+
+    run(conf, mjpath, comm)
+end
 
 function run(conf, mjpath, comm::ScalableES.AbstractComm)
-    t = now()
-
     println("Run name: $(conf.name)")
     savedfolder = joinpath(@__DIR__, "..", "saved", conf.name)
     if ScalableES.isroot(comm) && !isdir(savedfolder)
@@ -36,16 +43,18 @@ function run(conf, mjpath, comm::ScalableES.AbstractComm)
     @show conf.env.kwargs
     envs = LyceumMuJoCo.tconstruct(HrlMuJoCoEnvs.make(conf.env.name), Threads.nthreads(); conf.env.kwargs...)
     env = first(envs)
-
+    @show env
     actsize::Int = length(actionspace(env))
     obssize::Int = length(obsspace(env))
     coutsize = conf.hrl.onehot ? 8 : 2
     pobsize = conf.hrl.prim_specific_obs ? 29 + 3 : obssize + 3
 
-    (cnn, pnn), obstat = make_nns(obssize, pobsize, coutsize, actsize)
+    t = now()
+
+    (cnn, pnn), obstat = make_nns(obssize, pobsize, coutsize, actsize, conf.training.pop_size)
     println("nns created")
 
-    ScalableHrlEs.run_hrles(
+    ScalableHrlEs.run_hrl_nses(
         conf.name,
         cnn,
         pnn,
@@ -54,38 +63,31 @@ function run(conf, mjpath, comm::ScalableES.AbstractComm)
         obstat = obstat,
         gens = conf.training.generations,
         interval = conf.hrl.interval,
-        σ = conf.training.sigma,
-        η = conf.training.lr,
         episodes = conf.training.episodes,
         npolicies = conf.training.policies,
         cdist = conf.hrl.cdist,
         onehot = conf.hrl.onehot,
-        prim_pretrained_path = conf.hrl.pretrained_prim,
         prim_specific_obs = conf.hrl.prim_specific_obs,
-        seed = conf.seed,
+        behv_freq = conf.training.behv_freq,
+        min_w = conf.training.min_nov_w,
     )
-    println("DONE: Total time: $(now() - t)")
+
+    println("Total time: $(now() - t)")
+    println("Finalized!")
 end
 
-function run(conf, mjpath, mpi::Bool)
-    @show mpi
-    comm = if mpi
-        MPI.Init()
-        MPI.COMM_WORLD  # expecting this to be one per node
-    else
-        ScalableES.ThreadComm()
-    end
+function make_nns(cobssize, pobssize, coutsize, actsize, pop_size)
+    cnns = [
+        Chain(
+            Dense(cobssize, 256, tanh; initW = Flux.glorot_normal, initb = Flux.glorot_normal),
+            Dense(256, 256, tanh; initW = Flux.glorot_normal, initb = Flux.glorot_normal),
+            Dense(256, 256, tanh; initW = Flux.glorot_normal, initb = Flux.glorot_normal),
+            Dense(256, coutsize, tanh; initW = Flux.glorot_normal, initb = Flux.glorot_normal),
+        ) for _ = 1:pop_size
+    ]
 
-    run(conf, mjpath, comm)
-end
+    cobstat = ScalableES.Obstat(cobssize, 1.0f-2)
 
-function make_nns(cobssize, pobssize, coutsize, actsize)
-    cnn = Chain(
-        Dense(cobssize, 256, tanh; initW = Flux.glorot_normal, initb = Flux.glorot_normal),
-        Dense(256, 256, tanh; initW = Flux.glorot_normal, initb = Flux.glorot_normal),
-        Dense(256, 256, tanh; initW = Flux.glorot_normal, initb = Flux.glorot_normal),
-        Dense(256, coutsize, tanh; initW = Flux.glorot_normal, initb = Flux.glorot_normal),
-    )
 
     pnn = Chain(
         Dense(pobssize, 256, tanh; initW = Flux.glorot_normal, initb = Flux.glorot_normal),
@@ -95,28 +97,8 @@ function make_nns(cobssize, pobssize, coutsize, actsize)
         x -> x .* 30,
     )  # because ant has a joint range from -30, 30
 
-    cobstat = ScalableES.Obstat(cobssize, 1.0f-2)
     pobstat = ScalableES.Obstat(pobssize, 1.0f-2)
 
-    (cnn, pnn), ScalableHrlEs.HrlObstat(cobstat, pobstat)
-end
 
-function parseargs()
-    s = ArgParseSettings()
-    @add_arg_table s begin
-        "cfgpath"
-            required = true
-            help = "path/to/cfg.yml"
-        "--mpi"
-            help = "use if running on multiple nodes"
-            action = :store_true
-        "--ns"
-            help = "used for telling batch mode to call novelty search"
-            action = :store_true
-        "--mjpath"
-            required = false
-            default = "~/.mujoco/mjkey.txt"
-            help = "path/to/mujoco/mjkey.txt"
-    end
-    parse_args(s)
+    (cnns, pnn), ScalableHrlEs.HrlObstat(cobstat, pobstat)
 end
