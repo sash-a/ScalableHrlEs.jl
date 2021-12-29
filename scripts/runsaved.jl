@@ -12,9 +12,6 @@ using Flux
 using BSON: @load
 using StaticArrays
 using ArgParse
-using SharedArrays
-using Distributed
-
 
 # visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 1000, cdist))
 
@@ -24,10 +21,20 @@ step = 0
 targ_start_dist = 0
 rew = 0
 
-const sqrthalf = sqrt(1/2)
+const sqrthalf = Float32(sqrt(1 / 2))
 
-function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), (cobstd, pobstd), steps::Int, cdist; cforward=ScalableHrlEs.forward)
-    global abs_target 
+function act(
+    nns::Tuple{Chain,Chain},
+    env,
+    cintervals::Int,
+    (cobmean, pobmean),
+    (cobstd, pobstd),
+    steps::Int,
+    cdist;
+    cforward = ScalableHrlEs.forward,
+    prim_specific_obs = false,
+)
+    global abs_target
     global rel_target
     global step
     global targ_start_dist
@@ -41,20 +48,20 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
     sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
     nbins = hasproperty(env, :nbins) ? env.nbins : 10
     if hasproperty(env, :target)
-        getsim(env).mn[:geom_pos][ngeom=:target_geom] = [env.target..., 0]
+        # getsim(env).mn[:geom_pos][ngeom=:target_geom] = [env.target..., 0]
     end
 
     ob = LyceumMuJoCo.getobs(env)
     if step % cintervals == 0  # step the controller
-        c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins; rng=nothing)
+        c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins, nothing)
         rel_target = ScalableHrlEs.outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
         abs_target = rel_target + pos
-        getsim(env).mn[:geom_pos][ngeom=:recomend_geom] = [abs_target..., 0]
+        # getsim(env).mn[:geom_pos][ngeom=:recomend_geom] = [abs_target..., 0]
 
         dist = HrlMuJoCoEnvs.euclidean(env.target, HrlMuJoCoEnvs._torso_xy(env))
         @show step
         @show env.start_targ_dist
-        @show dist/env.start_targ_dist
+        @show dist / env.start_targ_dist
         @show dist
         @show rew
         println("\n\n")
@@ -62,8 +69,16 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
 
     rel_target = abs_target - pos  # update rel_target each time
     dist = HrlMuJoCoEnvs.euclidean(HrlMuJoCoEnvs._torso_xy(env), abs_target)
-    pob = ScalableHrlEs.encode_prim_obs(ob, env, rel_target, dist / 1000)
-    act = ScalableES.forward(pnn, pob, pobmean, pobstd; rng=nothing)
+
+
+    pob = ob
+    if prim_specific_obs
+        @show :PSO
+        pob = ob[ScalableHrlEs.robot_obs_range(env)]
+    end
+
+    pob = ScalableHrlEs.encode_prim_obs(pob, env, rel_target, dist / 1000)
+    act = ScalableES.forward(pnn, pob, pobmean, pobstd, nothing)
     LyceumMuJoCo.setaction!(env, act)
     rew += getreward(env)
 
@@ -75,8 +90,19 @@ function act(nns::Tuple{Chain,Chain}, env, cintervals::Int, (cobmean, pobmean), 
 end
 
 
-function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cobstd, pobstd), targ, targdist,
-    cintervals::Int, steps::Int, episodes::Int, cdist::Float32; cforward=ScalableHrlEs.forward)
+function evalenv_withtarg(
+    nns::Tuple{Chain,Chain},
+    env,
+    (cobmean, pobmean),
+    (cobstd, pobstd),
+    targ,
+    targdist,
+    cintervals::Int,
+    steps::Int,
+    episodes::Int,
+    cdist::Float32;
+    cforward = ScalableHrlEs.forward,
+)
     cnn, pnn = nns
 
     cobs = Vector{Vector{Float64}}()
@@ -93,8 +119,8 @@ function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cob
 
     sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
     nbins = hasproperty(env, :nbins) ? env.nbins : 8
-    
-    for ep in 1:episodes
+
+    for ep = 1:episodes
         LyceumMuJoCo.reset!(env)
         env.target = targ
 
@@ -105,13 +131,23 @@ function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cob
         abs_target = zeros(2)
 
         targ_start_dist = 0  # dist from target when controller suggests position
-        d_old = 0f0
+        d_old = 0.0f0
 
-        for i in 0:steps - 1
+        for i = 0:steps-1
             ob = LyceumMuJoCo.getobs(env)
 
             if i % cintervals == 0  # step the controller
-                c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins; rng=nothing)
+                c_raw_out = cforward(
+                    cnn,
+                    ob,
+                    cobmean,
+                    cobstd,
+                    cdist,
+                    LyceumMuJoCo._torso_ang(env),
+                    sensor_span,
+                    nbins;
+                    rng = nothing,
+                )
                 rel_target = ScalableHrlEs.outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
                 # rel_target = outer_clamp.(rand(Uniform(-cdist, cdist), 2), -sqrthalf, sqrthalf)
                 abs_target = rel_target + pos
@@ -124,7 +160,7 @@ function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cob
             rel_target = abs_target - pos  # update rel_target each time
             # pob = vcat(rel_target, ob)
             pob = ScalableHrlEs.encode_prim_obs(ob, env, rel_target, d_old / 1000)
-            act = ScalableES.forward(pnn, pob, pobmean, pobstd; rng=nothing)
+            act = ScalableES.forward(pnn, pob, pobmean, pobstd; rng = nothing)
             LyceumMuJoCo.setaction!(env, act)
             LyceumMuJoCo.step!(env)
 
@@ -145,7 +181,7 @@ function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cob
 
             d_old = d_new
 
-            if LyceumMuJoCo.isdone(env) 
+            if LyceumMuJoCo.isdone(env)
                 died = true
                 break
             end
@@ -160,40 +196,48 @@ function evalenv_withtarg(nns::Tuple{Chain,Chain}, env, (cobmean, pobmean), (cob
     max_rs / episodes, (cr / episodes, pr / episodes)
 end
 
-s = ArgParseSettings()
-    @add_arg_table s begin
-    "runname"
-        required = true
-        help = "run name in saved folder"
-    "env"
-        required = true
-        help = "HrlMuJoCoEnvs environment name"
-    "generation"
-        required = true
-        help = "generation number to view"
-    "--intervals", "-i"
-        help = "how often the controller suggests a target"
-        arg_type = Int
-        default = 25
-    "--dist", "-d"
-        help = "max distance from agent controller can recommend"
-        arg_type = Float32
-        default = 4f0
-    "--onehot"
-        help = "if provided then controller uses one hot mode"
-        action = :store_true
-end
-args = parse_args(s)
+# s = ArgParseSettings()
+#     @add_arg_table s begin
+#     "runname"
+#         required = true
+#         help = "run name in saved folder"
+#     "env"
+#         required = true
+#         help = "HrlMuJoCoEnvs environment name"
+#     "generation"
+#         required = true
+#         help = "generation number to view"
+#     "--intervals", "-i"
+#         help = "how often the controller suggests a target"
+#         arg_type = Int
+#         default = 25
+#     "--dist", "-d"
+#         help = "max distance from agent controller can recommend"
+#         arg_type = Float32
+#         default = 4f0
+#     "--onehot"
+#         help = "if provided then controller uses one hot mode"
+#         action = :store_true
+# end
+# args = parse_args(s)
 
-runname = args["runname"]
-envname = args["env"]
-gen = args["generation"]
-intervals = args["intervals"]
-cdist = args["dist"]
-cforward = args["onehot"] ? ScalableHrlEs.onehot_forward : ScalableHrlEs.forward
+# runname = args["runname"]
+# envname = args["env"]
+# gen = args["generation"]
+# intervals = args["intervals"]
+# cdist = args["dist"]
+# cforward = args["onehot"] ? ScalableHrlEs.onehot_forward : ScalableHrlEs.forward
+
+envname = "AntMaze"
+runname = "remote/maze/AntMaze-pretrained_pretrained_1"
+gen = 1
+
+intervals = 25
+cdist = 4
 
 mj_activate("/home/sasha/.mujoco/mjkey.txt")
 env = first(LyceumMuJoCo.tconstruct(HrlMuJoCoEnvs.make(envname), 1))
+
 @show actionspace(env)
 @show obsspace(env)
 
@@ -202,5 +246,5 @@ obmean = ScalableHrlEs.mean(obstat)
 obstd = ScalableHrlEs.std(obstat)
 model = Base.invokelatest(ScalableES.to_nn, p)
 
-@show evalenv_withtarg(model, env, obmean, obstd, HrlMuJoCoEnvs.MAZE_TARGET, 5, intervals, 500, 10, cdist; cforward=cforward)
-visualize(env, controller=e -> act(model, e, intervals, obmean, obstd, 500, cdist; cforward=cforward))
+# @show evalenv_withtarg(model, env, obmean, obstd, HrlMuJoCoEnvs.MAZE_TARGET, 5, intervals, 500, 10, cdist; cforward=cforward)
+visualize(env, controller = e -> act(model, e, intervals, obmean, obstd, 500, cdist; prim_specific_obs=true))

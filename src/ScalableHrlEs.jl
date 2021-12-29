@@ -207,7 +207,7 @@ end
 function validateparams(pols::Int, comm::ScalableES.AbstractComm)
     nodes = ScalableES.nnodes(comm)
     ppn = pols / nodes
-    @assert pols % nodes == 0 "Each node must get the same number of policies. There are $pols policies and $nodes nodes."
+    @assert pols % nodes == 0 "Each node must get the same number of policies, but there are $pols policies and $nodes nodes."
     @assert ppn % 4 == 0 "Policies per node must be divisible by four to perform antithetic sampling. Policies per node = $ppn."
 end
 

@@ -23,10 +23,10 @@ function robot_obs_range(env)
     if env isa HrlMuJoCoEnvs.AntGatherEnv
         [1:29;]
     elseif env isa HrlMuJoCoEnvs.AntMazeEnv
-        [4:32;]
+        [1:29;]
     elseif env isa HrlMuJoCoEnvs.AntPushEnv
-        [4:18; 22:35]
+        [1:15; 18:31]
     elseif env isa HrlMuJoCoEnvs.AntFallEnv
-        [4:18; 22:35]
+        [1:15; 18:31]  # untested!
     end
 end

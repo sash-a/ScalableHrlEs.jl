@@ -22,6 +22,7 @@ begin
 	# file = "../csv_logs/tune/push/cdist/AntPush_tune_cdist-2_"
 	gather_nohot_path = "../csv_logs/gather/tuned/nohot/AntGather_tuned_"
 	gather_onehot_path = "../csv_logs/gather/tuned/onehot/AntGather_tuned-onehot_"
+	gather_pretrained_path = "../csv_logs/gather/pretrained/AntGather-pretrained_pretrained_"
 	
 	maze_path = "../csv_logs/maze/tuned/AntMaze_tuned_"
 end
@@ -37,18 +38,31 @@ end
 # ╔═╡ 08ee1e2d-0f88-4692-b9d8-62301cb06aa9
 function clean(df, fix_gentime=false)
 	df.metric = map(x-> x[2:end], df.metric) # removing preceding forward slash
-	df = unstack(df, :step, :metric, :value)
+	df = unstack(df, :step, :metric, :value) # rotating df
+	
 	if fix_gentime # fixing gen time logging bug
 		ndata = floor(Int32, (nrow(df) - 1) / 2)
 		@show ndata
 		df[1:ndata, :gen_time_s] = df[ndata+1:ndata*2, :gen_time_s]  
-		df = df[1:ndata, names(df)]  # cutting off at 3000 gens
+		df = df[1:ndata, names(df)]  # cutting off at half the gens
 	end
 
-	for col in eachcol(df)  # replacing missing with 0
-		replace!(col, missing => 0)
-	end
+	df.gen_time_s = cumsum(df.gen_time_s) ./ 60 ./ 60
 	df.main_fitness = fix_main_fit(df.main_fitness)
+	df.total_steps = df.total_steps
+
+	# changing column names
+	rename!(df, Dict(
+		"step" 					=> "Generation",
+		"main_fitness" 			=> "Test Reward",
+		"gen_time_s" 			=> "Time (h)",
+		"total_steps" 			=> "Samples",
+		"summarystat/1/mean" 	=> "Mean Controller Reward",
+		"summarystat/2/mean" 	=> "Mean Primitive Reward"
+	    )
+	)
+
+	dropmissing!(df)
 
 	df
 end
@@ -62,8 +76,9 @@ end
 begin
 	gather_nohot_dfs = readlog(gather_nohot_path, 0:trials-1, true)
 	gather_onehot_dfs = readlog(gather_onehot_path, 0:trials-1)
-
-	maze_dfs = readlog(maze_path, [0,1,2,3,4])
+	gather_pretrained_dfs = readlog(gather_pretrained_path, 0:4)
+	
+	maze_dfs = readlog(maze_path, 0:9, true)
 end
 
 # ╔═╡ 44567d76-679d-4a80-9259-2c8304db2176
@@ -87,38 +102,55 @@ function smooth(xs, ys, factor=0.5)
 	xs, vs
 end
 
-# ╔═╡ b9f2c016-93e1-440d-88c3-3f30921de1bd
-function prep_data(dfs, xtype, field, smoothness)
-	cols = map(df->df[!, field], dfs)
+# ╔═╡ f878eb74-dc63-4a02-8aaf-2b5641c37c59
+function mean_interp(dfs, x_ax, y_ax; inv=false)
+	raw_ys = map(df->df[!, y_ax], dfs)
+	raw_xs = map(df->df[!, x_ax], dfs)
 	
-	ys = matrixize(cols)
-	@show size(ys)
+	itps = [LinearInterpolation(raw_x, raw_y, extrapolation_bc=Line()) for (raw_x, raw_y) in zip(raw_xs, raw_ys)]
 
-	len = first(size(ys))
-	x = if xtype == :gen
-		collect(1.:len)
-	elseif xtype == :time
-		mean([cumsum(df.gen_time_s)[1:len] ./ 60 ./ 60 for df in dfs])
-	elseif xtype == :steps
-		mean([df.total_steps[1:len] for df in dfs])
-	else
-		@assert false "Did not recognize xtype: $xtype"
-	end
-
-	stdev = vec(std(ys, dims=2))
+	mn = 0
+	mx = mean([x[end] for x in raw_xs])
+	len = raw_xs |> xs -> map(length, xs) |> mean |> x-> trunc(Int, x)
+	
+	xs = range(mn, mx, length=len)
+	ys = matrixize([[itp(x) for x in xs] for itp in itps])
 	mean_y = vec(mean(ys, dims=2))
 
-	_, smooth_y = smooth(x, mean_y, smoothness)
-	_, smooth_stdev = smooth(x, stdev, smoothness)
+	if inv
+		LinearInterpolation(mean_y, xs)
+	else
+		LinearInterpolation(xs, mean_y)
+	end
+end
 
-	println("Max: $(maximum(mean_y))")
+# ╔═╡ b9f2c016-93e1-440d-88c3-3f30921de1bd
+function prep_data(dfs, x_ax, y_ax, smoothness)
+	raw_xs = map(df->df[!, x_ax], dfs)
+	raw_ys = map(df->df[!, y_ax], dfs)
 	
-	x, smooth_y, smooth_stdev
+	itps = [LinearInterpolation(raw_x, raw_y, extrapolation_bc=Line()) for (raw_x, raw_y) in zip(raw_xs, raw_ys)]
+
+	mn = 0
+	mx = mean([x[end] for x in raw_xs])
+	len = raw_xs |> xs -> map(length, xs) |> mean |> x-> trunc(Int, x)
+
+	xs = range(mn, mx, length=len)
+	ys = matrixize([[itp(x) for x in xs] for itp in itps])
+
+	stddev = vec(std(ys, dims=2))
+	@show stddev[end]
+	mean_y = vec(mean(ys, dims=2))
+
+	_, smooth_y = smooth(xs, mean_y, smoothness)
+	_, smooth_stdev = smooth(xs, stddev, smoothness)
+	
+	xs, smooth_y, smooth_stdev
 end
 
 # ╔═╡ fa3f66c2-b52a-48fd-9e49-42e8815880fa
-function plotexp(dfs, xtype, field, title, label)
-	x,y,stdev = prep_data(dfs, xtype, field, 0.2)
+function plotexp(dfs, x_ax, y_ax, title, label)
+	x,y,stdev = prep_data(dfs, x_ax, y_ax, 0.2)
 	
 	plot(x, 
 		y, 
@@ -126,14 +158,12 @@ function plotexp(dfs, xtype, field, title, label)
 		# fillalpha=.5, 
 		title=title, 
 		label=label, 
-		legend=:bottomright,
+		legend=:topleft,
 		dpi=500
 	)
 
-	xlabel!(uppercasefirst(String(xtype)))
-	ylabel!("Test reward")
-	
-	# savefig("maze mean controller shortened.png")
+	xlabel!(x_ax)
+	ylabel!(y_ax)
 end
 
 # ╔═╡ 6832f9ac-5105-47fb-a817-c1e5ce5dc6b8
@@ -147,32 +177,48 @@ function plotexp!(dfs, xtype, field, label)
 		fillalpha=0.5, 
 		label=label, 
 	)
-	
-	# savefig("maze mean controller shortened.png")
-end
-
-# ╔═╡ 8d5baceb-f1e3-451a-92d5-cfabebaea4e7
-begin
-	x, y, _ = prep_data(gather_nohot_dfs, :steps, :main_fitness, 0.01)
-	inds = findall(y .> fill(5, length(y)))
-	x[first(inds)]
-	1.5e9 -1.6e9
 end
 
 # ╔═╡ b6dd438c-4e57-4b52-a1f5-98d29f16acc6
 md"### Ant gather test reward"
 
 # ╔═╡ ecb988c8-844b-4a69-9870-613398238f65
-begin 
-	t1 = "Ant Gather: Test Reward Per Environmental Steps"
+begin
+	t1 = "Ant Gather: Test Reward Per Environment Steps"
 	
-	plotexp(gather_nohot_dfs, :steps, :main_fitness, t1, "SHES")
-	plotexp!(gather_onehot_dfs, :steps, :main_fitness, "SHES one-hot")
-	plot!([0, 4e9], [3.02, 3.02], label="HIRO")
+	plotexp(gather_nohot_dfs, "Samples", "Test Reward", t1, "SHES")
+	plotexp!(gather_onehot_dfs, "Samples", "Test Reward", "SHES one-hot")
 
-	# savefig("Gather test rew [steps]")
+	gather_other_xs = [0, 4e9] # [0, 24] [0, 4e9]
+	plot!(gather_other_xs, [3.02, 3.02], label="HIRO")
+	plot!(gather_other_xs, [0.85, 0.85], label="FuN")
+	plot!(gather_other_xs, [1.92, 1.92], label="SNN4HRL")
+	plot!(gather_other_xs, [1.42, 1.42], label="VIME")
 
-	# maximum(map(df -> maximum(df.main_fitness), gather_onehot_dfs)), 	maximum(map(df -> maximum(df.main_fitness), gather_nohot_dfs))
+	# savefig("gather test rew [steps]")
+end
+
+# ╔═╡ a49117d2-562f-4af2-be5e-9f56423fe9c0
+begin
+	t4 = "Ant Gather: Pretraining vs SHES"
+	
+	plotexp(gather_nohot_dfs, "Samples", "Test Reward", t4, "SHES")
+	plotexp!(gather_pretrained_dfs, "Samples", "Test Reward", "Pretrained")
+
+	savefig("gather pretrained")
+end
+
+# ╔═╡ 9c6878e0-741d-4030-9d4a-94fa40184221
+md"### Ant Gather train reward"
+
+# ╔═╡ ca002d4f-666b-4126-a94f-b664113086d3
+begin
+	t3 = "Ant Gather: Mean Primitive Training Reward"
+	
+	plotexp(gather_nohot_dfs, "Time (h)", "Mean Primitive Reward", t3, "SHES")
+	plotexp!(gather_onehot_dfs, "Time (h)", "Mean Primitive Reward", "SHES one-hot")
+
+	savefig("gather prim train rew")
 end
 
 # ╔═╡ 0bfb4725-966c-48a2-9efe-253355030ae8
@@ -181,7 +227,30 @@ md"### Ant maze test reward"
 # ╔═╡ ae589eef-898c-4c6f-957d-ccb240e13c55
 begin
 	t2 = "Ant Maze: Test Reward Per Environmental Steps"
-	plotexp(maze_dfs, :gen, :main_fitness, t2, "SHES")
+	plotexp(maze_dfs, "Samples", "Test Reward", t2, "SHES")
+
+	maze_other_xs = [0, 4.7e9] # [0,12.75] | [0, 4.7e9]
+	
+	plot!(maze_other_xs, [0.99,0.99], label="HIRO")
+	plot!(maze_other_xs, [0.16, 0.16], label="FuN")
+	plot!(maze_other_xs, [0, 0], label="SNN4HRL+VIME")
+
+	# savefig("maze test rew [steps]")
+end
+
+# ╔═╡ fbb132aa-4f45-4f22-9339-25511aaa840b
+md"##### Finding values"
+
+# ╔═╡ 8d5baceb-f1e3-451a-92d5-cfabebaea4e7
+begin
+	# x, y, _ = prep_data(gather_nohot_dfs, "Samples", "Test Reward", 0.01)
+	mean_interp(gather_onehot_dfs, "Samples", "Test Reward", inv=false)(3.9e9)
+end
+
+# ╔═╡ a1cd331f-2d70-4802-8d76-7038268da1e7
+begin
+	raw_xs = map(df->df[!, "Samples"], gather_onehot_dfs)
+	mean([x[end] for x in raw_xs])
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -1184,13 +1253,19 @@ version = "0.9.1+5"
 # ╠═0b2d3f1c-3a78-4d7a-94dd-5eab9118faa2
 # ╠═f91781de-3d67-48f5-b82a-90d91e105812
 # ╠═22594eef-9489-4d68-9090-f4958e219b4f
+# ╠═f878eb74-dc63-4a02-8aaf-2b5641c37c59
 # ╠═b9f2c016-93e1-440d-88c3-3f30921de1bd
 # ╠═fa3f66c2-b52a-48fd-9e49-42e8815880fa
 # ╠═6832f9ac-5105-47fb-a817-c1e5ce5dc6b8
-# ╠═8d5baceb-f1e3-451a-92d5-cfabebaea4e7
 # ╟─b6dd438c-4e57-4b52-a1f5-98d29f16acc6
 # ╠═ecb988c8-844b-4a69-9870-613398238f65
+# ╠═a49117d2-562f-4af2-be5e-9f56423fe9c0
+# ╟─9c6878e0-741d-4030-9d4a-94fa40184221
+# ╠═ca002d4f-666b-4126-a94f-b664113086d3
 # ╟─0bfb4725-966c-48a2-9efe-253355030ae8
 # ╠═ae589eef-898c-4c6f-957d-ccb240e13c55
+# ╟─fbb132aa-4f45-4f22-9339-25511aaa840b
+# ╠═8d5baceb-f1e3-451a-92d5-cfabebaea4e7
+# ╠═a1cd331f-2d70-4802-8d76-7038268da1e7
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
