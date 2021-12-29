@@ -1,4 +1,4 @@
-name: AntGather-pretrained
+name: AntGather-pre
 env:
   name: AntGather
   steps: 500  # max steps for env

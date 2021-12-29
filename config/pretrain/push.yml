@@ -1,4 +1,4 @@
-name: AntPush-pretrained
+name: AntPush-pre-fix
 env:
   name: AntPush
   steps: 500  # max steps for env

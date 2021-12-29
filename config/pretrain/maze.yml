@@ -1,4 +1,4 @@
-name: AntMaze-pretrained
+name: AntMaze-pre-fix
 env:
   name: AntMaze
   steps: 500  # max steps for env
