@@ -23,7 +23,7 @@ function ScalableES.make_result_vec(
     rollouts::Int,
     steps::Int,
     interval::Int,
-    ::ScalableES.ThreadComm,
+    ::ScalableES.AbstractComm,
 )
     npoints = interval < 0 ? 1 : steps ÷ interval
     Vector{HrlNsEsResult{Float64,rollouts,npoints}}(undef, n)
