@@ -53,8 +53,6 @@ function batchrun()
 
     batchfilepath = args["cfgpath"]
     
-    batchfilepath = "config/batch.yml"
-
     conf = nothing
     if ScalableES.isroot(comm)
         conf = mkpidlock("ses-batchfile-lock") do
