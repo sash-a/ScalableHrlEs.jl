@@ -11,7 +11,7 @@ function hrl_run_env(
     cforward = onehot_forward,
     prim_specific_obs = false,
     earlystop_eval = false,
-    maze_eval = false,
+    maze_eval = nothing,
 )
     cobs = Vector{Vector{Float64}}()
     pobs = Vector{Vector{Float64}}()
@@ -59,7 +59,7 @@ function _one_episode(
     cforward = onehot_forward,
     prim_specific_obs = false,
     earlystop_eval = false,
-    maze_eval = false,
+    maze_eval = nothing,
 )
     cnn, pnn = nns
 
@@ -85,6 +85,10 @@ function _one_episode(
     earlystop_rew = 0
 
     LyceumMuJoCo.reset!(env)
+    if maze_eval !== nothing
+        env.target = maze_eval
+    end
+
     for i = 0:steps-1
         ob = LyceumMuJoCo.getobs(env)
 
@@ -133,7 +137,7 @@ function _one_episode(
 
     if earlystop_eval
         cr = earlystop_rew
-    elseif maze_eval
+    elseif maze_eval !== nothing
         cr = LyceumMuJoCo.geteval(env)
     end
 
