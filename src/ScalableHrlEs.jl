@@ -107,10 +107,17 @@ function run_hrles(
             prim_specific_obs = prim_specific_obs,
         )
     eval_gather = env isa HrlMuJoCoEnvs.AbstractGatherEnv
-    eval_maze =
-        env isa HrlMuJoCoEnvs.AbstractMazeEnv ||
-        env isa HrlMuJoCoEnvs.AbstractPushEnv ||
-        env isa HrlMuJoCoEnvs.AbstractFallEnv
+    
+    maze_target = if env isa HrlMuJoCoEnvs.AbstractMazeEnv
+        HrlMuJoCoEnvs.MAZE_TARGET
+    elseif env isa HrlMuJoCoEnvs.AbstractPushEnv
+        HrlMuJoCoEnvs.PUSH_TARGET
+    elseif env isa HrlMuJoCoEnvs.AbstractFallEnv
+        HrlMuJoCoEnvs.FALL_TARGET
+    else
+        nothing
+    end
+
     evalfn =
         (nns, e, rng, obmean, obstd) -> first(
             first(
@@ -125,7 +132,7 @@ function run_hrles(
                     10,
                     cdist;
                     cforward = cforward,
-                    maze_eval = eval_maze,
+                    maze_eval = maze_target,
                     earlystop_eval = eval_gather,
                     prim_specific_obs = prim_specific_obs,
                 ),

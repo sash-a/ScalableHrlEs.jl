@@ -63,6 +63,7 @@ function run(conf, mjpath, comm::ScalableES.AbstractComm)
         obstat = obstat,
         gens = conf.training.generations,
         interval = conf.hrl.interval,
+        steps = conf.env.steps,
         episodes = conf.training.episodes,
         npolicies = conf.training.policies,
         cdist = conf.hrl.cdist,
