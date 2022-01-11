@@ -40,7 +40,7 @@ function act(
     global targ_start_dist
     global rew
 
-    # env.target = [0, 16]
+    env.target = [0, 16]
 
     cnn, pnn = nns
     pos = HrlMuJoCoEnvs._torso_xy(env)
@@ -48,7 +48,7 @@ function act(
     sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
     nbins = hasproperty(env, :nbins) ? env.nbins : 10
     if hasproperty(env, :target)
-        # getsim(env).mn[:geom_pos][ngeom=:target_geom] = [env.target..., 0]
+        getsim(env).mn[:geom_pos][:, Val(:goal)] = [env.target..., 0]
     end
 
     ob = LyceumMuJoCo.getobs(env)
@@ -56,6 +56,7 @@ function act(
         c_raw_out = cforward(cnn, ob, cobmean, cobstd, cdist, LyceumMuJoCo._torso_ang(env), sensor_span, nbins, nothing)
         rel_target = ScalableHrlEs.outer_clamp.(c_raw_out, -sqrthalf, sqrthalf)
         abs_target = rel_target + pos
+        getsim(env).mn[:geom_pos][:, Val(:recomend_geom)] = [abs_target..., 0]
         # getsim(env).mn[:geom_pos][ngeom=:recomend_geom] = [abs_target..., 0]
 
         dist = HrlMuJoCoEnvs.euclidean(env.target, HrlMuJoCoEnvs._torso_xy(env))
@@ -229,8 +230,8 @@ end
 # cforward = args["onehot"] ? ScalableHrlEs.onehot_forward : ScalableHrlEs.forward
 
 envname = "AntMaze"
-runname = "remote/maze/AntMaze-pretrained_pretrained_1"
-gen = 1
+runname = "remote/maze/AntMaze_fixed-fr_1"
+gen = 1600
 
 intervals = 25
 cdist = 4
@@ -247,4 +248,4 @@ obstd = ScalableHrlEs.std(obstat)
 model = Base.invokelatest(ScalableES.to_nn, p)
 
 # @show evalenv_withtarg(model, env, obmean, obstd, HrlMuJoCoEnvs.MAZE_TARGET, 5, intervals, 500, 10, cdist; cforward=cforward)
-visualize(env, controller = e -> act(model, e, intervals, obmean, obstd, 500, cdist; prim_specific_obs=true))
+visualize(env, controller = e -> act(model, e, intervals, obmean, obstd, 500, cdist; prim_specific_obs=false))
