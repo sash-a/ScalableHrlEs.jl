@@ -26,9 +26,9 @@ function onehot_forward(nn, x, obmean, obstd, max_dist, yaw, sensor_span, nbins,
     dist_percent = out[bin_idx]
 
     bin_res = sensor_span / nbins
-    half_span = sensor_span / 2
-    n_bins_inv = 1 / nbins
+    half_span = sensor_span / 2f0
+    n_bins_inv = 1f0 / nbins
 
-    angle = bin_idx * bin_res - half_span + n_bins_inv + yaw
+    angle = bin_idx * bin_res - half_span + n_bins_inv + Float32(yaw)
     return pol2cart(max(dist_percent * max_dist, 1), angle)
 end

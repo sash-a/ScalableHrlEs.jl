@@ -79,7 +79,7 @@ function _one_episode(
     rel_target = zeros(2)
     abs_target = zeros(2)
 
-    sensor_span = hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π
+    sensor_span = Float32(hasproperty(env, :sensor_span) ? env.sensor_span : 2 * π)
     nbins = hasproperty(env, :nbins) ? env.nbins : 8
 
     earlystop_rew = 0
