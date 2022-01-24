@@ -21,10 +21,13 @@ julia --project -t 8 scripts/runner.jl config/cfg.yml
 
 ## Examples
 
-So far 2 HRL envs have been trained using this method
+Envs that have been trained using this method:
 
 ### Ant Gather
 ![](vids/antgather.gif)
 
 ### Ant Maze
 ![](vids/antmaze.gif)
+
+### Ant Push
+![](vids/antpush.gif)
